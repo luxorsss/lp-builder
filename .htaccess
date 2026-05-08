@@ -1,0 +1,10 @@
+RewriteEngine On
+
+# Redirect URL lama ke URL baru (opsional)
+RewriteCond %{THE_REQUEST} \s/view_page\.php\?slug=([^\s&]+) [NC]
+RewriteRule ^ /lpb/%1? [R=301,L]
+
+# Rewrite URL baru ke file view_page.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([^/]+)/?$ view_page.php?slug=$1 [L,QSA]

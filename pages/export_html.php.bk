@@ -1,0 +1,415 @@
+<?php
+// export_html.php
+require_once '../includes/config.php';
+require_once '../includes/auth.php';
+require_once '../includes/functions.php';
+
+// Cek login
+requireLogin();
+$user = getCurrentUser($pdo);
+
+// Get page ID
+$page_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+
+if ($page_id <= 0) {
+    http_response_code(400);
+    die("ID Landing Page tidak valid.");
+}
+
+// Ambil data page dan pastikan milik user
+$page = getUserLandingPage($pdo, $page_id, $user['id']);
+if (!$page) {
+    http_response_code(404);
+    die("Landing page tidak ditemukan atau bukan milik Anda.");
+}
+
+// Ambil elemen-elemen
+$stmt = $pdo->prepare("SELECT * FROM page_elements WHERE page_id = ? ORDER BY order_position ASC");
+$stmt->execute([$page_id]);
+$elements = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// --- Helper function untuk parsing konfigurasi tracking ---
+function parseTrackingConfig($config_string) {
+    $config = json_decode($config_string, true);
+    if (is_array($config)) {
+        return [
+            'pixel_id' => $config['pixel_id'] ?? '',
+            'capi_endpoint' => $config['capi_endpoint'] ?? '',
+            'capi_access_token' => $config['capi_access_token'] ?? ''
+        ];
+    } else {
+        return [
+            'pixel_id' => $config_string ?? '',
+            'capi_endpoint' => '',
+            'capi_access_token' => ''
+        ];
+    }
+}
+
+// Parse tracking config
+$tracking_config = parseTrackingConfig($page['meta_pixel_id']);
+$page['pixel_id'] = $tracking_config['pixel_id'];
+$page['capi_endpoint'] = $page['capi_endpoint'] ?? $tracking_config['capi_endpoint'] ?? '';
+$page['capi_access_token'] = $page['capi_access_token'] ?? $tracking_config['capi_access_token'] ?? '';
+
+
+// --- Fungsi untuk menghasilkan HTML standalone ---
+function generateStandaloneHTML($page, $elements) {
+    $title = htmlspecialchars($page['title']);
+    $slug = htmlspecialchars($page['slug']);
+
+    // Mulai membangun HTML
+    $html = "<!DOCTYPE html>\n";
+    $html .= "<html lang=\"id\">\n";
+    $html .= "<head>\n";
+    $html .= "    <meta charset=\"UTF-8\">\n";
+    $html .= "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n";
+    $html .= "    <title>{$title}</title>\n";
+    // --- Hapus link ke Bootstrap & Font Awesome ---
+    // --- Tambahkan CSS Kustom ---
+    $html .= "    <style>\n";
+    // --- CSS Kustom untuk menggantikan Bootstrap & Font Awesome ---
+    $html .= "        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700;800&display=swap');\n";
+    $html .= "        body {\n";
+    $html .= "            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n";
+    $html .= "            line-height: 1.5;\n";
+    $html .= "            background-color: #F2F5FA;\n";
+    $html .= "            margin: 0;\n";
+    $html .= "            padding: 0;\n";
+    $html .= "            font-size: 16px;\n";
+    $html .= "        }\n";
+    $html .= "        .page-container {\n";
+    $html .= "            max-width: 700px;\n";
+    $html .= "            margin: 20px auto;\n";
+    $html .= "            background: white;\n";
+    $html .= "            border-radius: 12px;\n";
+    $html .= "            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);\n";
+    $html .= "        }\n";
+    $html .= "        @media (max-width: 768px) {\n";
+    $html .= "            .page-container {\n";
+    $html .= "                margin: 10px;\n";
+    $html .= "                border-radius: 8px;\n";
+    $html .= "            }\n";
+    $html .= "        }\n";
+    $html .= "        .content-wrapper {\n";
+    $html .= "            padding: 40px 70px 40px 70px;\n";
+    $html .= "        }\n";
+    $html .= "        @media (max-width: 768px) {\n";
+    $html .= "            .content-wrapper {\n";
+    $html .= "                padding: 20px 20px 20px 20px;\n";
+    $html .= "            }\n";
+    $html .= "        }\n";
+    $html .= "        .element-spacing {\n";
+    $html .= "            margin-bottom: 20px;\n";
+    $html .= "        }\n";
+    $html .= "        @media (max-width: 768px) {\n";
+    $html .= "            .element-spacing {\n";
+    $html .= "                margin-bottom: 16px;\n";
+    $html .= "            }\n";
+    $html .= "        }\n";
+    $html .= "        .header-element, .paragraph-element {\n";
+    $html .= "            margin-bottom: 20px;\n";
+    $html .= "        }\n";
+    $html .= "        .image-element {\n";
+    $html .= "            margin-bottom: 20px;\n";
+    $html .= "            text-align: center;\n";
+    $html .= "        }\n";
+    $html .= "        .image-element img {\n";
+    $html .= "            max-width: 100%;\n";
+    $html .= "            height: auto;\n";
+    $html .= "            border-radius: 8px;\n";
+    $html .= "        }\n";
+    $html .= "        .button-element {\n";
+    $html .= "            margin-bottom: 20px;\n";
+    $html .= "            text-align: center;\n";
+    $html .= "        }\n";
+    $html .= "        .custom-button {\n";
+    $html .= "            display: inline-block;\n";
+    $html .= "            padding: 14px 28px;\n";
+    $html .= "            text-decoration: none;\n";
+    $html .= "            border-radius: 8px;\n";
+    $html .= "            font-weight: 700;\n";
+    $html .= "            font-size: 24px;\n";
+    $html .= "            transition: all 0.3s ease;\n";
+    $html .= "            border: none;\n";
+    $html .= "            line-height: 1.2;\n";
+    $html .= "        }\n";
+    $html .= "        .custom-button:hover {\n";
+    $html .= "            transform: translateY(-2px);\n";
+    $html .= "            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);\n";
+    $html .= "        }\n";
+    $html .= "        .form-element {\n";
+    $html .= "            margin-bottom: 25px;\n";
+    $html .= "            background: #f8f9fa;\n";
+    $html .= "            padding: 25px;\n";
+    $html .= "            border-radius: 10px;\n";
+    $html .= "            border: 1px solid #e9ecef;\n";
+    $html .= "        }\n";
+    $html .= "        @media (max-width: 768px) {\n";
+    $html .= "            .form-element {\n";
+    $html .= "                padding: 20px;\n";
+    $html .= "            }\n";
+    $html .= "        }\n";
+    $html .= "        .custom-html-element {\n";
+    $html .= "            margin-bottom: 20px;\n";
+    $html .= "        }\n";
+    // Typography
+    $html .= "        .header-element h1, .paragraph-element h1 {\n";
+    $html .= "            font-size: 32px;\n";
+    $html .= "            font-weight: 800;\n";
+    $html .= "            margin-top: 0;\n";
+    $html .= "            margin-bottom: 0.1em;\n";
+    $html .= "            line-height: 1.5;\n";
+    $html .= "        }\n";
+    $html .= "        .header-element h2, .paragraph-element h2 {\n";
+    $html .= "            font-size: 24px;\n";
+    $html .= "            font-weight: 700;\n";
+    $html .= "            margin-top: 0;\n";
+    $html .= "            margin-bottom: 0.6em;\n";
+    $html .= "            line-height: 1.3;\n";
+    $html .= "        }\n";
+    $html .= "        .header-element h3, .paragraph-element h3 {\n";
+    $html .= "            font-size: 20px;\n";
+    $html .= "            font-weight: 600;\n";
+    $html .= "            margin-top: 0;\n";
+    $html .= "            margin-bottom: 0.7em;\n";
+    $html .= "            line-height: 1.4;\n";
+    $html .= "        }\n";
+    $html .= "        .paragraph-element p {\n";
+    $html .= "            font-size: 16px;\n";
+    $html .= "            margin-top: 0;\n";
+    $html .= "            margin-bottom: 0.5em;\n";
+    $html .= "            line-height: 1.5;\n";
+    $html .= "        }\n";
+    // Quill editor text alignment
+    $html .= "        .ql-align-center {\n";
+    $html .= "            text-align: center;\n";
+    $html .= "        }\n";
+    $html .= "        .ql-align-right {\n";
+    $html .= "            text-align: right;\n";
+    $html .= "        }\n";
+    $html .= "        .ql-align-justify {\n";
+    $html .= "            text-align: justify;\n";
+    $html .= "        }\n";
+    // Responsive images
+    $html .= "        img {\n";
+    $html .= "            max-width: 100%;\n";
+    $html .= "            height: auto;\n";
+    $html .= "        }\n";
+    // Divider styling
+    $html .= "        .divider-element {\n";
+    $html .= "            text-align: center;\n";
+    $html .= "            margin: 20px 0;\n";
+    $html .= "        }\n";
+    $html .= "        .divider-line {\n";
+    $html .= "            border: 0;\n";
+    $html .= "            height: 1px;\n";
+    $html .= "            background: #ccc;\n";
+    $html .= "            margin: 10px auto;\n";
+    $html .= "        }\n";
+    $html .= "        .divider-dashed {\n";
+    $html .= "            border-top: 2px dashed #ccc;\n";
+    $html .= "        }\n";
+    $html .= "        .divider-dotted {\n";
+    $html .= "            border-top: 2px dotted #ccc;\n";
+    $html .= "        }\n";
+    // --- Akhir CSS Kustom ---
+    $html .= "    </style>\n";
+    $html .= "</head>\n";
+    $html .= "<body>\n";
+    $html .= "<div class=\"page-container\">\n";
+    $html .= "    <div class=\"content-wrapper\">\n";
+
+    foreach ($elements as $element) {
+        $type = $element['type'];
+        $content = $element['content'];
+        $styles_json = $element['styles'];
+        $styles = $styles_json ? json_decode($styles_json, true) : [];
+
+        // --- Wrapper untuk setiap elemen ---
+        $html .= "        <div class=\"element-spacing\">\n";
+
+        switch ($type) {
+            case 'header':
+            case 'paragraph':
+                $element_class = ($type === 'header') ? 'header-element' : 'paragraph-element';
+                $sanitized_content = $content; // Diasumsikan sudah disanitasi saat disimpan
+
+                // Deteksi perataan teks dari konten Quill untuk menambahkan kelas
+                $align_class = '';
+                if (strpos($sanitized_content, 'class="ql-align-center"') !== false) {
+                    $align_class = ' ql-align-center';
+                } elseif (strpos($sanitized_content, 'class="ql-align-right"') !== false) {
+                    $align_class = ' ql-align-right';
+                } elseif (strpos($sanitized_content, 'class="ql-align-justify"') !== false) {
+                    $align_class = ' ql-align-justify';
+                }
+
+                $html .= "            <div class=\"{$element_class}{$align_class}\">\n";
+                $html .= "                {$sanitized_content}\n";
+                $html .= "            </div>\n";
+                break;
+
+            case 'divider':
+                $style = isset($styles['style']) ? htmlspecialchars($styles['style']) : 'solid';
+                $color = isset($styles['color']) ? htmlspecialchars($styles['color']) : '#cccccc';
+                $border_style = 'solid';
+                if($style === 'dashed') $border_style = 'dashed';
+                if($style === 'dotted') $border_style = 'dotted';
+                $html .= "            <div class=\"divider-element\">\n";
+                $html .= "                <hr class=\"divider-line divider-{$style}\" style=\"border-color: {$color}; border-top-style: {$border_style};\">\n";
+                $html .= "            </div>\n";
+                break;
+
+            case 'image':
+                $sanitized_url = htmlspecialchars($content);
+                $html .= "            <div class=\"image-element\">\n";
+                if (!empty($sanitized_url)) {
+                    // --- Tambahkan lazy loading ---
+                    $html .= "                <img loading=\"lazy\" src=\"{$sanitized_url}\" alt=\"Image\">\n";
+                    // --- Akhir penambahan lazy loading ---
+                }
+                $html .= "            </div>\n";
+                break;
+
+            case 'button':
+                $button_text = htmlspecialchars($content);
+                $link = isset($styles['link']) ? htmlspecialchars($styles['link']) : '#';
+                $bg_color = isset($styles['bg_color']) ? htmlspecialchars($styles['bg_color']) : '#007bff';
+                $text_color = isset($styles['text_color']) ? htmlspecialchars($styles['text_color']) : '#ffffff';
+                $html .= "            <div class=\"button-element\">\n";
+                $html .= "                <a href=\"{$link}\" class=\"custom-button\" style=\"background-color: {$bg_color}; color: {$text_color};\"";
+                if (strpos($link, 'http') === 0) {
+                     $html .= " target=\"_blank\"";
+                }
+                $html .= ">{$button_text}</a>\n";
+                $html .= "            </div>\n";
+                break;
+
+            case 'form':
+                $desc = $content; // Tidak perlu htmlspecialchars karena akan dirender sebagai HTML
+                $html .= "            <div class=\"form-element\">\n";
+                if (!empty($desc)) {
+                    $html .= "                <div class=\"mb-4\">\n";
+                    $html .= "                    {$desc}\n";
+                    $html .= "                </div>\n";
+                }
+                // Form statis sederhana untuk HTML yang diekspor
+                $html .= "                <form>\n";
+                $html .= "                    <div class=\"mb-3\">\n";
+                $html .= "                        <label class=\"form-label\">Nama Lengkap</label>\n";
+                $html .= "                        <input type=\"text\" class=\"form-control form-control-lg\" name=\"name\" required>\n";
+                $html .= "                    </div>\n";
+                $html .= "                    <div class=\"mb-3\">\n";
+                $html .= "                        <label class=\"form-label\">Email</label>\n";
+                $html .= "                        <input type=\"email\" class=\"form-control form-control-lg\" name=\"email\" required>\n";
+                $html .= "                    </div>\n";
+                $html .= "                    <div class=\"mb-4\">\n";
+                $html .= "                        <label class=\"form-label\">Pesan</label>\n";
+                $html .= "                        <textarea class=\"form-control\" name=\"message\" rows=\"4\"></textarea>\n";
+                $html .= "                    </div>\n";
+                $html .= "                    <button type=\"submit\" class=\"btn btn-primary btn-lg w-100\">Kirim Pesan</button>\n";
+                $html .= "                </form>\n";
+                $html .= "            </div>\n";
+                break;
+
+            case 'html':
+                // Konten HTML kustom - Tidak disanitasi, asumsi aman dari user
+                $html .= "            <div class=\"custom-html-element\">\n";
+                $html .= "                {$content}\n"; // Potensi risiko XSS jika tidak hati-hati
+                $html .= "            </div>\n";
+                break;
+
+            default:
+                // Elemen tidak dikenal, lewati
+                break;
+        }
+        // --- Tutup wrapper untuk setiap elemen ---
+        $html .= "        </div>\n";
+    }
+
+    $html .= "    </div>\n"; // Tutup content-wrapper
+    $html .= "</div>\n"; // Tutup page-container
+
+    // --- Script Meta Pixel & CAPI ---
+    if (!empty($page['pixel_id'])) {
+        $pixel_id = htmlspecialchars($page['pixel_id']);
+        $html .= "<!-- Meta Pixel Code -->\n";
+        $html .= "<script>\n";
+        $html .= "!function(f,b,e,v,n,t,s)\n";
+        $html .= "{if(f.fbq)return;n=f.fbq=function(){n.callMethod?\n";
+        $html .= "n.callMethod.apply(n,arguments):n.queue.push(arguments)};\n";
+        $html .= "if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';\n";
+        $html .= "n.queue=[];t=b.createElement(e);t.async=!0;\n";
+        $html .= "t.src=v;s=b.getElementsByTagName(e)[0];\n";
+        $html .= "s.parentNode.insertBefore(t,s)}(window, document,'script',\n";
+        // --- Perbaiki URL ---
+        $html .= "'https://connect.facebook.net/en_US/fbevents.js');\n";
+        // --- Akhir Perbaikan URL ---
+        $html .= "fbq('init', '{$pixel_id}');\n";
+        $html .= "fbq('track', 'ViewContent');\n";
+        $html .= "</script>\n";
+        $html .= "<noscript><img height=\"1\" width=\"1\" style=\"display:none\"\n";
+        $html .= "src=\"https://www.facebook.com/tr?id={$pixel_id}&ev=ViewContent&noscript=1\"\n";
+        $html .= "/></noscript>\n";
+        $html .= "<!-- End Meta Pixel Code -->\n";
+
+        // --- Script CAPI ---
+        $html .= "<script>\n";
+        $html .= "// Send ViewContent event to CAPI on page load\n";
+        $html .= "window.addEventListener('load', function() {\n";
+        $html .= "    // Prepare CAPI data for ViewContent\n";
+        $html .= "    const capiData = {\n";
+        $html .= "        event: 'ViewContent',\n";
+        $html .= "        page_title: '" . addslashes($page['title']) . "',\n";
+        $html .= "        page_slug: '" . addslashes($page['slug']) . "',\n";
+        $html .= "        // user_data: {} // Tidak ada data user untuk ViewContent saat page load\n";
+        $html .= "    };\n";
+        $html .= "\n";
+        // --- Gunakan endpoint dan token dari tracking_config ---
+        if (!empty($page['capi_endpoint'])) {
+            $capi_endpoint = htmlspecialchars($page['capi_endpoint']);
+            $html .= "    // Send to CAPI endpoint if configured\n";
+            $html .= "    fetch('{$capi_endpoint}', {\n";
+            $html .= "            method: 'POST',\n";
+            $html .= "            headers: {\n";
+            $html .= "                'Content-Type': 'application/json',\n";
+            if (!empty($page['capi_access_token'])) {
+                $capi_access_token = htmlspecialchars($page['capi_access_token']);
+                $html .= "                'Authorization': 'Bearer {$capi_access_token}'\n";
+            } else {
+                 $html .= "                // 'Authorization': 'Bearer YOUR_ACCESS_TOKEN' // Tidak ada token\n";
+            }
+            $html .= "            },\n";
+            $html .= "            body: JSON.stringify(capiData)\n";
+            $html .= "        })\n";
+            $html .= "        .then(response => {\n";
+            $html .= "             if (!response.ok) {\n";
+            $html .= "                console.error('CAPI ViewContent event failed:', response.status, response.statusText);\n";
+            $html .= "                // Optionally log to your server\n";
+            $html .= "             }\n";
+            $html .= "             // console.log('CAPI ViewContent event sent');\n";
+            $html .= "        })\n";
+            $html .= "        .catch(error => {\n";
+            $html .= "            console.error('CAPI ViewContent event error:', error);\n";
+            $html .= "            // Optionally log to your server\n";
+            $html .= "        });\n";
+        }
+        // --- Akhir Script CAPI ---
+        $html .= "});\n";
+        $html .= "</script>\n";
+        // --- Akhir Script Meta Pixel & CAPI ---
+    }
+    // --- Hapus link ke Bootstrap JS ---
+    // $html .= "<script src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js\"></script>\n";
+    $html .= "</body>\n";
+    $html .= "</html>";
+
+    return $html;
+}
+// --- Akhir Fungsi ---
+
+// Hasilkan dan tampilkan HTML
+echo generateStandaloneHTML($page, $elements);
+
+?>
