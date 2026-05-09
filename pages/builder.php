@@ -10,25 +10,23 @@ $page_id = isset($_GET["id"]) ? (int) $_GET["id"] : 0;
 $error = "";
 $success = "";
 
-// Ambil daftar profil pixel
-$stmt = $pdo->prepare("SELECT id, name FROM pixel_profiles WHERE user_id = ? ORDER BY name ASC");
-$stmt->execute([$user['id']]);
-$pixels_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 // Ambil daftar project/folder untuk dropdown
 $stmt = $pdo->prepare("SELECT id, name FROM projects WHERE user_id = ? ORDER BY name ASC");
 $stmt->execute([$user['id']]);
 $projects_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Ambil daftar profil pixel
+$stmt = $pdo->prepare("SELECT id, name FROM pixel_profiles WHERE user_id = ? ORDER BY name ASC");
+$stmt->execute([$user['id']]);
+$pixels_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 // --- LOGIKA SIMPAN (POST) ---
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $title = trim($_POST["title"]);
     $slug = trim($_POST["slug"]);
-    $pixel_id = trim($_POST["pixel_id"]);
-    $capi_endpoint = trim($_POST["capi_endpoint"]);
-    $capi_token = trim($_POST["capi_access_token"]);
     $event_name = trim($_POST["meta_event_name"]);
     $project_id = !empty($_POST['project_id']) ? (int)$_POST['project_id'] : null;
+    $pixel_profile_id = !empty($_POST['pixel_profile_id']) ? (int)$_POST['pixel_profile_id'] : null;
 
     // Tangkap data Pure HTML
     $is_pure_html = isset($_POST["is_pure_html"]) ? 1 : 0;
@@ -38,17 +36,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $pdo->beginTransaction();
         if ($page_id > 0) {
             $stmt = $pdo->prepare(
-                "UPDATE landing_pages SET project_id=?, title=?, slug=?, meta_pixel_id=?, capi_endpoint=?, capi_access_token=?, meta_event_name=?, is_pure_html=?, pure_html_content=? WHERE id=? AND user_id=?",
+                "UPDATE landing_pages SET project_id=?, pixel_profile_id=?, title=?, slug=?, meta_event_name=?, is_pure_html=?, pure_html_content=? WHERE id=? AND user_id=?",
             );
             $stmt->execute([
-                $project_id, $title, $slug, $pixel_id, $capi_endpoint, $capi_token, $event_name, $is_pure_html, $pure_html_content, $page_id, $user["id"],
+                $project_id, $pixel_profile_id, $title, $slug, $event_name, $is_pure_html, $pure_html_content, $page_id, $user["id"],
             ]);
         } else {
             $stmt = $pdo->prepare(
-                "INSERT INTO landing_pages (user_id, project_id, title, slug, meta_pixel_id, capi_endpoint, capi_access_token, meta_event_name, status, is_pure_html, pure_html_content) VALUES (?,?,?,?,?,?,?,?,'draft',?,?)",
+                "INSERT INTO landing_pages (user_id, project_id, pixel_profile_id, title, slug, meta_event_name, status, is_pure_html, pure_html_content) VALUES (?,?,?,?,?,?,'draft',?,?)",
             );
             $stmt->execute([
-                $user["id"], $project_id, $title, $slug, $pixel_id, $capi_endpoint, $capi_token, $event_name, $is_pure_html, $pure_html_content,
+                $user["id"], $project_id, $pixel_profile_id, $title, $slug, $event_name, $is_pure_html, $pure_html_content,
             ]);
             $page_id = $pdo->lastInsertId();
         }
@@ -201,11 +199,9 @@ function renderElementUI($type, $idx, $content, $st)
     <style>
         .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
         
-        /* FIX: Elevasi Z-Index agar Dropdown Quill tidak tenggelam / tertutup elemen di bawahnya */
         .wysiwyg-element { z-index: 1; position: relative; }
         .wysiwyg-element.selected { border-color: #004ac6; background-color: #f3f3fe; z-index: 50 !important; }
         
-        /* FIX: Proteksi dan style Dropdown Quill di lingkungan Tailwind */
         .ql-toolbar { border-radius: 0.5rem 0.5rem 0 0; border-color: #c3c6d7 !important; background: white; }
         .ql-container { border-radius: 0 0 0.5rem 0.5rem; border-color: #c3c6d7 !important; min-height: 100px; background: white; }
         .ql-picker-options { z-index: 9999 !important; border: 1px solid #c3c6d7 !important; box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important; background: white !important; }
@@ -311,7 +307,7 @@ function renderElementUI($type, $idx, $content, $st)
         <form id="builderForm" action="builder.php<?= $page_id ? '?id='.$page_id : '' ?>" method="POST" class="flex flex-col h-full m-0">
             
             <div class="bg-surface-container-lowest border-b border-outline-variant p-4 shrink-0 shadow-sm z-30">
-                <div class="flex flex-wrap gap-4 items-end">
+                <div class="flex flex-wrap gap-4 items-end mb-4">
                     <div class="flex-1 min-w-[200px]">
                         <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Judul Halaman</label>
                         <input name="title" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary focus:ring-1 focus:ring-primary outline-none" type="text" value="<?= htmlspecialchars($page['title'] ?? '') ?>" required/>
@@ -332,12 +328,41 @@ function renderElementUI($type, $idx, $content, $st)
                             <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">arrow_drop_down</span>
                         </div>
                     </div>
-                    <div class="w-px bg-outline-variant h-10 self-center mx-2 hidden lg:block"></div>
-                    <div class="flex flex-col justify-center h-10">
+                    <div class="flex flex-col justify-center h-10 ml-2">
                         <label class="flex items-center gap-2 cursor-pointer group">
                             <input class="w-4 h-4 text-error border-outline-variant rounded focus:ring-error" type="checkbox" id="isPureHtmlToggle" name="is_pure_html" value="1" <?= (!empty($page['is_pure_html'])) ? 'checked' : '' ?>/>
                             <span class="text-[14px] font-semibold text-error group-hover:text-on-error-container transition-colors">Mode Pure HTML</span>
                         </label>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-4 items-end pt-4 border-t border-outline-variant border-dashed">
+                    <div class="w-64">
+                        <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">analytics</span> Meta Pixel</label>
+                        <div class="relative">
+                            <select name="pixel_profile_id" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none appearance-none cursor-pointer">
+                                <option value="">-- Tanpa Pixel --</option>
+                                <?php foreach ($pixels_list as $px): ?>
+                                    <option value="<?= $px['id'] ?>" <?= (($page['pixel_profile_id'] ?? '') == $px['id']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($px['name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+                        </div>
+                    </div>
+                    <div class="w-64">
+                        <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">bolt</span> Event Trigger</label>
+                        <div class="relative">
+                            <select name="meta_event_name" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none appearance-none cursor-pointer">
+                                <?php 
+                                $evs = ['ViewContent', 'Lead', 'Purchase', 'AddToCart', 'InitiateCheckout', 'CompleteRegistration'];
+                                foreach($evs as $e): ?>
+                                    <option value="<?= $e ?>" <?= (($page['meta_event_name'] ?? 'ViewContent') == $e) ? 'selected' : '' ?>><?= $e ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -349,6 +374,13 @@ function renderElementUI($type, $idx, $content, $st)
                     <div class="bg-[#e8f5e9] border border-[#a5d6a7] text-[#2e7d32] px-4 py-3 rounded-lg mb-6 flex items-center gap-2 shadow-sm">
                         <span class="material-symbols-outlined">check_circle</span>
                         <span class="font-medium text-[14px]">Halaman berhasil disimpan!</span>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($error)): ?>
+                    <div class="bg-[#ffebee] border border-[#ffcdd2] text-[#c62828] px-4 py-3 rounded-lg mb-6 flex items-center gap-2 shadow-sm">
+                        <span class="material-symbols-outlined">error</span>
+                        <span class="font-medium text-[14px]">Gagal menyimpan: <?= htmlspecialchars($error) ?></span>
                     </div>
                     <?php endif; ?>
 
@@ -402,13 +434,12 @@ function renderElementUI($type, $idx, $content, $st)
         <div class="shrink-0 border-b border-outline-variant">
             <div class="p-4 bg-surface-container-low flex items-center justify-between">
                 <div class="flex items-center gap-2 text-on-surface font-semibold text-[14px]">
-                    <span class="material-symbols-outlined text-primary text-[20px]">tune</span> Pengaturan
+                    <span class="material-symbols-outlined text-primary text-[20px]">tune</span> Pengaturan Elemen
                 </div>
             </div>
             <div class="flex w-full">
                 <button class="settings-tab flex-1 py-3 text-[13px] font-bold text-primary border-b-2 border-primary text-center transition-colors" data-target="style">Gaya</button>
                 <button class="settings-tab flex-1 py-3 text-[13px] font-medium text-on-surface-variant hover:bg-surface-container-low text-center transition-colors" data-target="content">Konten</button>
-                <button class="settings-tab flex-1 py-3 text-[13px] font-medium text-on-surface-variant hover:bg-surface-container-low text-center transition-colors" data-target="tracking">Tracking</button>
             </div>
         </div>
 
@@ -419,44 +450,6 @@ function renderElementUI($type, $idx, $content, $st)
             </div>
 
             <div id="settingsArea" class="space-y-5 hidden"></div>
-
-            <div id="tab-tracking" class="settings-tab-content space-y-5 hidden">
-                <div class="bg-blue-50 text-blue-700 text-[12px] p-4 rounded-xl border border-blue-100 flex gap-2">
-                    <span class="material-symbols-outlined text-[18px]">info</span>
-                    <span>Pilih profil pixel yang sudah Anda buat. Data Token & ID otomatis terhubung.</span>
-                </div>
-
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-[13px] font-bold text-slate-700 mb-1 uppercase tracking-wider">Pilih Meta Pixel</label>
-                        <div class="relative">
-                            <select name="pixel_profile_id" form="builderForm" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-[14px] focus:border-blue-500 outline-none appearance-none cursor-pointer">
-                                <option value="">-- Tanpa Pixel --</option>
-                                <?php foreach ($pixels_list as $px): ?>
-                                    <option value="<?= $px['id'] ?>" <?= (($page['pixel_profile_id'] ?? '') == $px['id']) ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($px['name']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                            <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-[13px] font-bold text-slate-700 mb-1 uppercase tracking-wider">Event Trigger</label>
-                        <div class="relative">
-                            <select name="meta_event_name" form="builderForm" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-[14px] focus:border-blue-500 outline-none appearance-none cursor-pointer">
-                                <?php 
-                                $evs = ['ViewContent', 'Lead', 'Purchase', 'AddToCart', 'InitiateCheckout'];
-                                foreach($evs as $e): ?>
-                                    <option value="<?= $e ?>" <?= (($page['meta_event_name'] ?? 'ViewContent') == $e) ? 'selected' : '' ?>><?= $e ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
         
         <div id="inspectorActions" class="shrink-0 p-4 border-t border-outline-variant bg-surface-container-lowest flex gap-2 hidden">
@@ -493,10 +486,8 @@ Sortable.create(document.getElementById('canvasElements'), {
     onEnd: function() { updateIndices(); }
 });
 
-// Click Element in Canvas (FIXED LOGIC)
+// Click Element in Canvas
 $(document).on('click', '.wysiwyg-element', function(e) {
-    // Jika elemen INI sudah berstatus selected, ABAIKAN logika click builder.
-    // Ini agar fungsi native JS milik Quill (seperti membuka dropdown) bisa berjalan tanpa di-interupsi/dirender ulang.
     if ($(this).hasClass('selected')) {
         return; 
     }
@@ -509,7 +500,6 @@ $(document).on('click', '.wysiwyg-element', function(e) {
     $('#settingsArea').show();
     $('#inspectorActions').removeClass('hidden').addClass('flex');
     
-    // Switch to style tab by default when selecting element
     $('.settings-tab[data-target="style"]').click();
 
     const type = $(this).data('element-type');
@@ -605,7 +595,7 @@ function initQuill(i) {
         theme: 'snow',
         modules: {
             toolbar: [
-                [{ 'font': [] }], // FIX: Tambahkan dukungan opsi Font dropdown
+                [{ 'font': [] }],
                 [{ 'header': [1, 2, 3, false] }],
                 ['bold', 'italic', 'underline', 'strike'],
                 [{ 'list': 'ordered'}, { 'list': 'bullet' }],
@@ -631,21 +621,13 @@ $('.settings-tab').click(function() {
     
     $('.settings-tab-content, #settingsArea > div').hide();
     
-    if(target === 'tracking') {
+    if(selectedElement) {
         $('#inspectorEmpty').hide();
-        $('#settingsArea').hide();
-        $('#inspectorActions').removeClass('flex').addClass('hidden');
-        $('#tab-tracking').show();
+        $('#settingsArea').show();
+        $('#inspectorActions').removeClass('hidden').addClass('flex');
+        $(`#tab-${target}`).show();
     } else {
-        $('#tab-tracking').hide();
-        if(selectedElement) {
-            $('#inspectorEmpty').hide();
-            $('#settingsArea').show();
-            $('#inspectorActions').removeClass('hidden').addClass('flex');
-            $(`#tab-${target}`).show();
-        } else {
-            $('#inspectorEmpty').show();
-        }
+        $('#inspectorEmpty').show();
     }
 });
 

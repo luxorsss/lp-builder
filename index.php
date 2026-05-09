@@ -167,6 +167,11 @@ $draft_count = count(array_filter($landing_pages, fn($p) => $p['status'] == 'dra
             <span class="material-symbols-outlined" data-weight="fill">description</span>
             <span>Semua Halaman</span>
         </a>
+        
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest rounded-xl font-medium transition-all" href="pixels.php">
+            <span class="material-symbols-outlined">analytics</span>
+            <span>Pengaturan Pixel</span>
+        </a>
     </div>
     
     <div class="flex flex-col gap-1 mt-auto pt-4 border-t border-surface-dim">
