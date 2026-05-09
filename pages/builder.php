@@ -1,102 +1,191 @@
 <?php
-require_once '../includes/config.php';
-require_once '../includes/auth.php';
-require_once '../includes/functions.php';
+require_once "../includes/config.php";
+require_once "../includes/auth.php";
+require_once "../includes/functions.php";
 
 requireLogin();
 $user = getCurrentUser($pdo);
 
-$page_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$error = ''; $success = '';
+$page_id = isset($_GET["id"]) ? (int) $_GET["id"] : 0;
+$error = "";
+$success = "";
 
 // --- LOGIKA SIMPAN (POST) ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $title = trim($_POST['title']);
-    $slug  = trim($_POST['slug']);
-    $pixel_id = trim($_POST['pixel_id']);
-    $capi_endpoint = trim($_POST['capi_endpoint']);
-    $capi_token = trim($_POST['capi_access_token']);
-    $event_name = trim($_POST['meta_event_name']);
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    $title = trim($_POST["title"]);
+    $slug = trim($_POST["slug"]);
+    $pixel_id = trim($_POST["pixel_id"]);
+    $capi_endpoint = trim($_POST["capi_endpoint"]);
+    $capi_token = trim($_POST["capi_access_token"]);
+    $event_name = trim($_POST["meta_event_name"]);
+
+    // Tangkap data Pure HTML
+    $is_pure_html = isset($_POST["is_pure_html"]) ? 1 : 0;
+    $pure_html_content = $_POST["pure_html_content"] ?? "";
 
     try {
         $pdo->beginTransaction();
         if ($page_id > 0) {
-            $stmt = $pdo->prepare("UPDATE landing_pages SET title=?, slug=?, meta_pixel_id=?, capi_endpoint=?, capi_access_token=?, meta_event_name=? WHERE id=? AND user_id=?");
-            $stmt->execute([$title, $slug, $pixel_id, $capi_endpoint, $capi_token, $event_name, $page_id, $user['id']]);
+            $stmt = $pdo->prepare(
+                "UPDATE landing_pages SET title=?, slug=?, meta_pixel_id=?, capi_endpoint=?, capi_access_token=?, meta_event_name=?, is_pure_html=?, pure_html_content=? WHERE id=? AND user_id=?",
+            );
+            $stmt->execute([
+                $title,
+                $slug,
+                $pixel_id,
+                $capi_endpoint,
+                $capi_token,
+                $event_name,
+                $is_pure_html,
+                $pure_html_content,
+                $page_id,
+                $user["id"],
+            ]);
         } else {
-            $stmt = $pdo->prepare("INSERT INTO landing_pages (user_id, title, slug, meta_pixel_id, capi_endpoint, capi_access_token, meta_event_name, status) VALUES (?,?,?,?,?,?,?,'draft')");
-            $stmt->execute([$user['id'], $title, $slug, $pixel_id, $capi_endpoint, $capi_token, $event_name]);
+            $stmt = $pdo->prepare(
+                "INSERT INTO landing_pages (user_id, title, slug, meta_pixel_id, capi_endpoint, capi_access_token, meta_event_name, status, is_pure_html, pure_html_content) VALUES (?,?,?,?,?,?,?,'draft',?,?)",
+            );
+            $stmt->execute([
+                $user["id"],
+                $title,
+                $slug,
+                $pixel_id,
+                $capi_endpoint,
+                $capi_token,
+                $event_name,
+                $is_pure_html,
+                $pure_html_content,
+            ]);
             $page_id = $pdo->lastInsertId();
         }
 
-        $pdo->prepare("DELETE FROM page_elements WHERE page_id=?")->execute([$page_id]);
-        if (isset($_POST['elements'])) {
-            foreach ($_POST['elements'] as $idx => $el) {
-                $stmt = $pdo->prepare("INSERT INTO page_elements (page_id, type, content, order_position, styles) VALUES (?,?,?,?,?)");
-                $stmt->execute([$page_id, $el['type'], $el['content'], $idx, json_encode($el['styles'])]);
+        $pdo->prepare("DELETE FROM page_elements WHERE page_id=?")->execute([
+            $page_id,
+        ]);
+        if (isset($_POST["elements"])) {
+            foreach ($_POST["elements"] as $idx => $el) {
+                $stmt = $pdo->prepare(
+                    "INSERT INTO page_elements (page_id, type, content, order_position, styles) VALUES (?,?,?,?,?)",
+                );
+                $stmt->execute([
+                    $page_id,
+                    $el["type"],
+                    $el["content"],
+                    $idx,
+                    json_encode($el["styles"]),
+                ]);
             }
         }
         $pdo->commit();
-        header("Location: builder.php?id=$page_id&saved=1"); exit;
-    } catch (Exception $e) { $pdo->rollBack(); $error = $e->getMessage(); }
+        header("Location: builder.php?id=$page_id&saved=1");
+        exit();
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        $error = $e->getMessage();
+    }
 }
 
-$page = $page_id > 0 ? getUserLandingPage($pdo, $page_id, $user['id']) : null;
+$page = $page_id > 0 ? getUserLandingPage($pdo, $page_id, $user["id"]) : null;
 $elements = [];
 if ($page) {
-    $stmt = $pdo->prepare("SELECT * FROM page_elements WHERE page_id=? ORDER BY order_position ASC");
+    $stmt = $pdo->prepare(
+        "SELECT * FROM page_elements WHERE page_id=? ORDER BY order_position ASC",
+    );
     $stmt->execute([$page_id]);
     $elements = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 // --- FUNGSI RENDER UI ---
-function renderElementUI($type, $idx, $content, $st) {
-    $bg = $st['bg_color'] ?? '#ffffff';
-    $tx = $st['text_color'] ?? '#000000';
-    $link = $st['link'] ?? '#';
+function renderElementUI($type, $idx, $content, $st)
+{
+    $bg = $st["bg_color"] ?? "#ffffff";
+    $tx = $st["text_color"] ?? "#000000";
+    $link = $st["link"] ?? "#";
 
-    $html = '<div class="wysiwyg-element" id="el-target-'.$idx.'" data-element-index="'.$idx.'" data-element-type="'.$type.'" style="background:'.$bg.'; color:'.$tx.'">';
-    $html .= '<div class="element-badge"><span><i class="fas fa-tag me-1"></i> '.$type.'</span><i class="fas fa-chevron-down toggle-icon"></i></div>';
-    $html .= '<div class="drag-handle"><i class="fas fa-grip-vertical"></i></div>';
-    
-    $html .= '<input type="hidden" name="elements['.$idx.'][type]" value="'.$type.'">';
-    $html .= '<input type="hidden" name="elements['.$idx.'][styles][bg_color]" class="in-bg" value="'.$bg.'">';
-    $html .= '<input type="hidden" name="elements['.$idx.'][styles][text_color]" class="in-tx" value="'.$tx.'">';
-    $html .= '<input type="hidden" name="elements['.$idx.'][styles][link]" class="in-link" value="'.$link.'">';
-    
+    $html =
+        '<div class="wysiwyg-element" id="el-target-' .
+        $idx .
+        '" data-element-index="' .
+        $idx .
+        '" data-element-type="' .
+        $type .
+        '" style="background:' .
+        $bg .
+        "; color:" .
+        $tx .
+        '">';
+    $html .=
+        '<div class="element-badge"><span><i class="fas fa-tag me-1"></i> ' .
+        $type .
+        '</span><i class="fas fa-chevron-down toggle-icon"></i></div>';
+    $html .=
+        '<div class="drag-handle"><i class="fas fa-grip-vertical"></i></div>';
+
+    $html .=
+        '<input type="hidden" name="elements[' .
+        $idx .
+        '][type]" value="' .
+        $type .
+        '">';
+    $html .=
+        '<input type="hidden" name="elements[' .
+        $idx .
+        '][styles][bg_color]" class="in-bg" value="' .
+        $bg .
+        '">';
+    $html .=
+        '<input type="hidden" name="elements[' .
+        $idx .
+        '][styles][text_color]" class="in-tx" value="' .
+        $tx .
+        '">';
+    $html .=
+        '<input type="hidden" name="elements[' .
+        $idx .
+        '][styles][link]" class="in-link" value="' .
+        $link .
+        '">';
+
     $html .= '<div class="element-content-wrapper">';
-    
+
     // Default content untuk elemen baru
-    $defaultContent = '';
-    switch($type) {
-        case 'header':
-            $defaultContent = 'Header Baru';
+    $defaultContent = "";
+    switch ($type) {
+        case "header":
+            $defaultContent = "Header Baru";
             break;
-        case 'paragraph':
-            $defaultContent = 'Paragraf baru... Klik untuk mengedit konten.';
+        case "paragraph":
+            $defaultContent = "Paragraf baru... Klik untuk mengedit konten.";
             break;
-		case 'html':
-            $defaultContent = '<div class="alert alert-info"><i class="fas fa-code"></i> Custom HTML Content</div>';
+        case "html":
+            $defaultContent =
+                '<div class="alert alert-info"><i class="fas fa-code"></i> Custom HTML Content</div>';
             break;
-        case 'button':
-            $defaultContent = 'Klik Disini';
+        case "button":
+            $defaultContent = "Klik Disini";
             break;
     }
-    
+
     // Gunakan konten yang ada atau default jika kosong
     $displayContent = !empty($content) ? $content : $defaultContent;
-    
-    if($type == 'header' || $type == 'paragraph') {
+
+    if ($type == "header" || $type == "paragraph") {
         // Untuk konten yang bisa diedit dengan Quill
-        $html .= '<div class="editable-content" data-editor-index="'.$idx.'">';
-        $html .= !empty($content) ? htmlspecialchars_decode($content) : $defaultContent;
-        $html .= '</div>';
-    } elseif($type == 'divider') {
-        $html .= '<hr style="border-top:2px solid '.$tx.'">';
-    } elseif($type == 'youtube') {
+        $html .=
+            '<div class="editable-content" data-editor-index="' . $idx . '">';
+        $html .= !empty($content)
+            ? htmlspecialchars_decode($content)
+            : $defaultContent;
+        $html .= "</div>";
+    } elseif ($type == "divider") {
+        $html .= '<hr style="border-top:2px solid ' . $tx . '">';
+    } elseif ($type == "youtube") {
         $html .= '<div class="ratio ratio-16x9">';
-        if(!empty($content)) {
-            $html .= '<iframe src="https://www.youtube.com/embed/'.$content.'" allowfullscreen></iframe>';
+        if (!empty($content)) {
+            $html .=
+                '<iframe src="https://www.youtube.com/embed/' .
+                $content .
+                '" allowfullscreen></iframe>';
         } else {
             $html .= '<div class="d-flex align-items-center justify-content-center" style="background: #f1f5f9; border-radius: 8px;">
                         <div class="text-center p-4">
@@ -105,10 +194,10 @@ function renderElementUI($type, $idx, $content, $st) {
                         </div>
                       </div>';
         }
-        $html .= '</div>';
-    } elseif($type == 'image') {
-        if(!empty($content)) {
-            $html .= '<img src="'.$content.'" class="img-fluid rounded">';
+        $html .= "</div>";
+    } elseif ($type == "image") {
+        if (!empty($content)) {
+            $html .= '<img src="' . $content . '" class="img-fluid rounded">';
         } else {
             $html .= '<div class="d-flex align-items-center justify-content-center" style="background: #f1f5f9; border-radius: 8px; min-height: 150px;">
                         <div class="text-center p-4">
@@ -117,10 +206,13 @@ function renderElementUI($type, $idx, $content, $st) {
                         </div>
                       </div>';
         }
-    } elseif($type == 'html') {
+    } elseif ($type == "html") {
         $html .= '<div class="html-preview border rounded p-3">';
-        if(!empty($content)) {
-            $html .= '<div class="html-content">'.htmlspecialchars_decode($content).'</div>';
+        if (!empty($content)) {
+            $html .=
+                '<div class="html-content">' .
+                htmlspecialchars_decode($content) .
+                "</div>";
         } else {
             $html .= '<div class="text-center p-3">
                         <i class="fas fa-code fa-2x text-muted mb-2"></i>
@@ -128,19 +220,31 @@ function renderElementUI($type, $idx, $content, $st) {
                         <p class="small text-muted">Edit untuk menambahkan kode HTML</p>
                       </div>';
         }
-        $html .= '</div>';
-    } elseif($type == 'button') {
+        $html .= "</div>";
+    } elseif ($type == "button") {
         $html .= '<div class="text-center">';
-        $html .= '<a href="'.$link.'" class="btn btn-lg shadow-sm" style="background:'.$bg.'; color:'.$tx.'; padding: 12px 30px; border-radius: 10px; font-weight: 600;">';
+        $html .=
+            '<a href="' .
+            $link .
+            '" class="btn btn-lg shadow-sm" style="background:' .
+            $bg .
+            "; color:" .
+            $tx .
+            '; padding: 12px 30px; border-radius: 10px; font-weight: 600;">';
         $html .= $displayContent;
-        $html .= '</a>';
-        $html .= '</div>';
-    } elseif($type == 'faq') {
+        $html .= "</a>";
+        $html .= "</div>";
+    } elseif ($type == "faq") {
         $faqs = !empty($content) ? json_decode($content, true) : [];
         $html .= '<div class="faq-preview">';
-        if(!empty($faqs)) {
-            foreach($faqs as $f) {
-                $html .= '<div class="faq-item-preview"><b>Q:</b> '.htmlspecialchars($f['q']??'').'<br><small>A: '.htmlspecialchars($f['a']??'').'</small></div>';
+        if (!empty($faqs)) {
+            foreach ($faqs as $f) {
+                $html .=
+                    '<div class="faq-item-preview"><b>Q:</b> ' .
+                    htmlspecialchars($f["q"] ?? "") .
+                    "<br><small>A: " .
+                    htmlspecialchars($f["a"] ?? "") .
+                    "</small></div>";
             }
         } else {
             $html .= '<div class="text-center p-3">
@@ -148,14 +252,19 @@ function renderElementUI($type, $idx, $content, $st) {
                         <p class="mb-0 small text-muted">Klik untuk menambahkan FAQ</p>
                       </div>';
         }
-        $html .= '</div>';
+        $html .= "</div>";
     }
-    $html .= '</div>';
-    
+    $html .= "</div>";
+
     // Textarea untuk konten asli (selalu ada, meski kosong)
-    $html .= '<textarea name="elements['.$idx.'][content]" class="d-none in-content">'.htmlspecialchars($content).'</textarea>';
-    $html .= '</div>';
-    
+    $html .=
+        '<textarea name="elements[' .
+        $idx .
+        '][content]" class="d-none in-content">' .
+        htmlspecialchars($content) .
+        "</textarea>";
+    $html .= "</div>";
+
     return $html;
 }
 ?>
@@ -533,7 +642,7 @@ function renderElementUI($type, $idx, $content, $st) {
             color: var(--primary);
             padding-left: 20px;
         }
-		
+
 		.btn-xs {
 			background: transparent;
 			border-radius: 4px;
@@ -764,7 +873,7 @@ function renderElementUI($type, $idx, $content, $st) {
             font-weight: 600 !important;
             border-radius: 10px !important;
         }
-		
+
 		/* Tambahkan di bagian CSS untuk styling elemen baru */
 		.faq-item-preview {
 			background: white;
@@ -787,7 +896,7 @@ function renderElementUI($type, $idx, $content, $st) {
 		.form-range::-moz-range-thumb {
 			background: #6d28d9;
 		}
-		
+
 		.btn-export {
 			background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
 			color: white;
@@ -802,37 +911,39 @@ function renderElementUI($type, $idx, $content, $st) {
         <div class="brand">
             <i class="fas fa-magic me-2"></i>LP Builder Pro
         </div>
-        
+
         <!-- TAMBAHKAN TOMBOL BACK TO LIST -->
         <a href="../index.php" class="btn btn-outline-secondary btn-sm">
             <i class="fas fa-arrow-left me-1"></i> Back to Pages
         </a>
-        
+
         <div class="text-muted small">
-            <?= $page ? 'Editing: ' . htmlspecialchars($page['title']) : 'Creating New Page' ?>
+            <?= $page
+                ? "Editing: " . htmlspecialchars($page["title"])
+                : "Creating New Page" ?>
         </div>
     </div>
-    
+
     <div class="ms-auto d-flex align-items-center gap-3">
-        <?php if(isset($_GET['saved'])): ?>
+        <?php if (isset($_GET["saved"])): ?>
             <div class="status-badge">
                 <i class="fas fa-check-circle me-2"></i>Saved Successfully!
             </div>
         <?php endif; ?>
-        
-        <?php if($page): ?>
+
+        <?php if ($page): ?>
             <a href="../preview.php?id=<?= $page_id ?>" target="_blank" class="btn btn-outline-primary px-3">
                 <i class="fas fa-eye me-2"></i>Preview
             </a>
         <?php endif; ?>
-		
+
 		<!-- Tambahkan setelahnya: -->
-		<?php if($page): ?>
+		<?php if ($page): ?>
 			<a href="export_html.php?id=<?= $page_id ?>" class="btn btn-outline-success px-3">
 				<i class="fas fa-file-export me-2"></i>Export HTML
 			</a>
 		<?php endif; ?>
-        
+
         <button type="submit" form="builderForm" class="save-btn">
             <i class="fas fa-save me-2"></i>SAVE PAGE
         </button>
@@ -845,7 +956,7 @@ function renderElementUI($type, $idx, $content, $st) {
         <h6 class="section-title">
             <i class="fas fa-cube me-2"></i>Page Elements
         </h6>
-        
+
         <div class="component-group">
             <div class="component-group-title">
                 <i class="fas fa-text-height"></i>Text Elements
@@ -932,15 +1043,31 @@ function renderElementUI($type, $idx, $content, $st) {
                 <div class="row g-4">
                     <div class="col-md-6">
                         <label class="form-label">Page Title</label>
-                        <input type="text" name="title" class="form-control" 
-                               value="<?= htmlspecialchars($page['title'] ?? '') ?>" 
+                        <input type="text" name="title" class="form-control"
+                               value="<?= htmlspecialchars(
+                                   $page["title"] ?? "",
+                               ) ?>"
                                placeholder="Enter page title" required>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Slug URL</label>
-                        <input type="text" name="slug" class="form-control" 
-                               value="<?= htmlspecialchars($page['slug'] ?? '') ?>" 
+                        <input type="text" name="slug" class="form-control"
+                               value="<?= htmlspecialchars(
+                                   $page["slug"] ?? "",
+                               ) ?>"
                                placeholder="e.g., my-landing-page">
+                    </div>
+                    <div class="col-12 mt-4 pt-3 border-top">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="isPureHtmlToggle" name="is_pure_html" value="1" <?= !empty(
+                                $page["is_pure_html"]
+                            )
+                                ? "checked"
+                                : "" ?>>
+                            <label class="form-check-label fw-bold" for="isPureHtmlToggle" style="color: #e74c3c;">
+                                <i class="fas fa-file-code me-1"></i> Gunakan Mode Pure HTML (Nonaktifkan Visual Builder)
+                            </label>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -955,14 +1082,19 @@ function renderElementUI($type, $idx, $content, $st) {
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Pixel ID</label>
-                            <input type="text" name="pixel_id" class="form-control" 
-                                   value="<?= htmlspecialchars($page['meta_pixel_id'] ?? '') ?>" 
+                            <input type="text" name="pixel_id" class="form-control"
+                                   value="<?= htmlspecialchars(
+                                       $page["meta_pixel_id"] ?? "",
+                                   ) ?>"
                                    placeholder="Enter your Meta Pixel ID">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Event Name</label>
-                            <input type="text" name="meta_event_name" class="form-control" 
-                                   value="<?= htmlspecialchars($page['meta_event_name'] ?? 'ViewContent') ?>" 
+                            <input type="text" name="meta_event_name" class="form-control"
+                                   value="<?= htmlspecialchars(
+                                       $page["meta_event_name"] ??
+                                           "ViewContent",
+                                   ) ?>"
                                    placeholder="Default: ViewContent">
                         </div>
                     </div>
@@ -976,30 +1108,47 @@ function renderElementUI($type, $idx, $content, $st) {
                     <div class="row g-3">
                         <div class="col-12">
                             <label class="form-label">CAPI Access Token</label>
-                            <input type="text" name="capi_access_token" class="form-control" 
-                                   value="<?= htmlspecialchars($page['capi_access_token'] ?? '') ?>" 
+                            <input type="text" name="capi_access_token" class="form-control"
+                                   value="<?= htmlspecialchars(
+                                       $page["capi_access_token"] ?? "",
+                                   ) ?>"
                                    placeholder="Enter CAPI Access Token">
                         </div>
                         <div class="col-12">
                             <label class="form-label">CAPI Endpoint</label>
-                            <input type="text" name="capi_endpoint" class="form-control" 
-                                   value="<?= htmlspecialchars($page['capi_endpoint'] ?? '') ?>" 
+                            <input type="text" name="capi_endpoint" class="form-control"
+                                   value="<?= htmlspecialchars(
+                                       $page["capi_endpoint"] ?? "",
+                                   ) ?>"
                                    placeholder="Enter CAPI Endpoint URL">
                         </div>
                     </div>
                 </div>
             </div>
 
+            <div id="pureHtmlSection" class="mb-4" style="display:none;">
+                <div class="canvas-header" style="border-left-color: #e74c3c;">
+                    <h5 class="fw-bold mb-3" style="color: var(--dark);">
+                        <i class="fas fa-code me-2"></i>Pure HTML Code
+                    </h5>
+                    <div class="alert alert-warning small mb-3">
+                        <i class="fas fa-info-circle me-2"></i> Paste seluruh HTML Anda di sini. Script Meta Pixel dan form tracking akan disisipkan otomatis.
+                    </div>
+                    <textarea name="pure_html_content" class="form-control font-monospace bg-dark text-light" rows="20" placeholder="<!DOCTYPE html><html>...</html>"><?= htmlspecialchars($page['pure_html_content'] ?? '') ?></textarea>
+                </div>
+            </div>
+
             <!-- Page Elements Canvas -->
-            <div class="mb-4">
+            <div id="visualBuilderSection" class="mb-4">
                 <h5 class="fw-bold mb-3" style="color: var(--dark);">
                     <i class="fas fa-layer-group me-2"></i>Page Elements
-                    <span class="badge bg-primary ms-2" id="elementCount"><?= count($elements) ?> elements</span>
+                    <span class="badge bg-primary ms-2" id="elementCount"><?= count(
+                        $elements,
+                    ) ?> elements</span>
                 </h5>
-                
+
                 <div id="canvasElements">
-                    <?php 
-                    if (empty($elements)): ?>
+                    <?php if (empty($elements)): ?>
                         <div class="empty-state">
                             <i class="fas fa-magic"></i>
                             <h5>No elements yet</h5>
@@ -1009,13 +1158,15 @@ function renderElementUI($type, $idx, $content, $st) {
                                 Tip: Click on any element to edit its properties
                             </div>
                         </div>
-                    <?php else:
-                        foreach ($elements as $idx => $el) {
-                            $st = json_decode($el['styles'], true) ?: [];
-                            echo renderElementUI($el['type'], $idx, $el['content'], $st);
-                        }
-                    endif; 
-                    ?>
+                    <?php else:foreach ($elements as $idx => $el) {
+                            $st = json_decode($el["styles"], true) ?: [];
+                            echo renderElementUI(
+                                $el["type"],
+                                $idx,
+                                $el["content"],
+                                $st,
+                            );
+                        }endif; ?>
                 </div>
             </div>
         </form>
@@ -1053,26 +1204,26 @@ function renderElementUI($type, $idx, $content, $st) {
 const fullColorPalette = [
     // BARIS 1: Grayscale (Putih ke Hitam)
     "#ffffff", "#eeeeee", "#cccccc", "#999999", "#666666", "#444444", "#000000",
-    
+
     // BARIS 2: Warna Standar (Cerah)
     "#ff0000", "#ff9900", "#ffff00", "#008a00", "#0066cc", "#9933ff", "#ffffff",
-    
+
     // BARIS 3: Warna Soft/Pastel
     "#facccc", "#ffebcc", "#ffffcc", "#cce8cc", "#cce0f5", "#ebd6ff", "#eeeeee",
-    
+
     // BARIS 4: Warna Gelap (Deep)
     "#a10000", "#b26b00", "#b2b200", "#006100", "#0047b2", "#6b24b2", "#333333",
-    
+
     // BARIS 5: KHUSUS NEON (Highlight Utama)
     "#FFFF00", "#39FF14", "#00FFFF", "#FF00FF", "#FF5F1F", "#FE019A", false
-];	
+];
 let quillEditors = {};
 let selectedElement = null;
 
 // Initialize Sortable
-Sortable.create(document.getElementById('canvasElements'), { 
-    animation: 200, 
-    handle: '.drag-handle', 
+Sortable.create(document.getElementById('canvasElements'), {
+    animation: 200,
+    handle: '.drag-handle',
     onEnd: function() {
         updateIndices();
         updateElementCount();
@@ -1085,9 +1236,9 @@ $(document).on('click', '.nav-header', function() {
 });
 
 $(document).on('click', '.wysiwyg-element', function(e) {
-    if($(e.target).closest('.ql-editor').length > 0 || 
+    if($(e.target).closest('.ql-editor').length > 0 ||
        $(e.target).hasClass('element-action-btn')) return;
-    
+
     $('.wysiwyg-element').not($(this)).removeClass('selected');
     $(this).addClass('selected');
     selectedElement = $(this);
@@ -1100,14 +1251,14 @@ $(document).on('click', '.wysiwyg-element', function(e) {
 $('.element-card').click(function() {
     const type = $(this).data('type');
     const idx = $('#canvasElements .wysiwyg-element').length;
-    
+
     // Hide empty state if it exists
     $('.empty-state').hide();
-    
+
     // Default content berdasarkan tipe elemen
     let defaultContent = '';
     let defaultStyles = { bg_color: '#ffffff', text_color: '#000000', link: '#' };
-    
+
     switch(type) {
         case 'header':
             defaultContent = '<h2>Header Baru</h2>';
@@ -1131,29 +1282,29 @@ $('.element-card').click(function() {
             defaultContent = '';
             break;
     }
-    
+
     // Buat elemen baru dengan konten default
     const html = `
     <div class="wysiwyg-element" id="el-target-${idx}" data-element-index="${idx}" data-element-type="${type}" style="background:${defaultStyles.bg_color}; color:${defaultStyles.text_color}">
         <div class="element-badge"><span><i class="fas fa-tag me-1"></i> ${type}</span><i class="fas fa-chevron-down toggle-icon"></i></div>
         <div class="drag-handle"><i class="fas fa-grip-vertical"></i></div>
-        
+
         <input type="hidden" name="elements[${idx}][type]" value="${type}">
         <input type="hidden" name="elements[${idx}][styles][bg_color]" class="in-bg" value="${defaultStyles.bg_color}">
         <input type="hidden" name="elements[${idx}][styles][text_color]" class="in-tx" value="${defaultStyles.text_color}">
         <input type="hidden" name="elements[${idx}][styles][link]" class="in-link" value="${defaultStyles.link}">
-        
+
         <div class="element-content-wrapper">
             ${renderElementContent(type, defaultContent, defaultStyles)}
         </div>
-        
+
         <textarea name="elements[${idx}][content]" class="d-none in-content">${defaultContent}</textarea>
     </div>`;
-    
-    $('#canvasElements').append(html); 
+
+    $('#canvasElements').append(html);
     updateIndices();
     updateElementCount();
-    
+
     // Auto-select the new element
     $(`#el-target-${idx}`).click();
 });
@@ -1162,9 +1313,9 @@ function renderElementContent(type, content, styles) {
     const bg = styles.bg_color || '#ffffff';
     const tx = styles.text_color || '#000000';
     const link = styles.link || '#';
-    
+
     let html = '';
-    
+
     switch(type) {
         case 'header':
         case 'paragraph':
@@ -1176,19 +1327,19 @@ function renderElementContent(type, content, styles) {
             }
             html += '</div>';
             break;
-            
+
         case 'divider':
             const thickness = styles.thickness || '2px';
             const dividerStyle = styles.divider_style || 'solid';
             html = `<hr style="border-top: ${thickness} ${dividerStyle} ${tx}; margin: 20px 0;">`;
             break;
-            
+
         case 'youtube':
             if(content && content.trim() !== '') {
                 html = `<div class="ratio ratio-16x9">
-                            <iframe src="https://www.youtube.com/embed/${content}" 
-                                    title="YouTube video" 
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                            <iframe src="https://www.youtube.com/embed/${content}"
+                                    title="YouTube video"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                     allowfullscreen>
                             </iframe>
                         </div>`;
@@ -1202,7 +1353,7 @@ function renderElementContent(type, content, styles) {
                         </div>`;
             }
             break;
-            
+
         case 'image':
             if(content && content.trim() !== '') {
                 const imgClass = styles.img_class || 'img-fluid rounded';
@@ -1218,7 +1369,7 @@ function renderElementContent(type, content, styles) {
                         </div>`;
             }
             break;
-			
+
 		case 'html':
 			if(content && content.trim() !== '') {
 				html = `<div class="html-preview border rounded p-3 bg-light">
@@ -1236,18 +1387,18 @@ function renderElementContent(type, content, styles) {
 						</div>`;
 			}
 			break;
-            
+
         case 'button':
             const btnSize = styles.btn_size || '';
             const btnText = content || 'Klik Disini';
             html = `<div class="text-center">
-                        <a href="${link}" class="btn ${btnSize} shadow-sm" 
+                        <a href="${link}" class="btn ${btnSize} shadow-sm"
                            style="background:${bg}; color:${tx}; padding: 12px 30px; border-radius: 10px; font-weight: 600;">
                             ${btnText}
                         </a>
                     </div>`;
             break;
-            
+
         case 'faq':
             try {
                 const faqs = content ? JSON.parse(content) : [];
@@ -1284,7 +1435,7 @@ function renderElementContent(type, content, styles) {
             }
             break;
     }
-    
+
     return html;
 }
 
@@ -1296,10 +1447,10 @@ function escapeHtml(text) {
 
 function initQuill(i) {
     if(quillEditors[i]) return;
-    
+
     const element = $(`.editable-content[data-editor-index="${i}"]`);
     if(element.length === 0) return;
-    
+
     const q = new Quill(element[0], {
 		theme: 'snow',
 		modules: {
@@ -1322,34 +1473,34 @@ function initQuill(i) {
 			blockquoteBtn.html('<i class="fas fa-quote-right"></i>');
 		}
 	}, 100);
-    
+
     // Set initial content
     const initialContent = selectedElement.find('.in-content').val();
     if(initialContent) {
         q.root.innerHTML = initialContent;
     }
-    
+
     q.on('text-change', () => {
         selectedElement.find('.in-content').val(q.root.innerHTML);
     });
-    
+
     quillEditors[i] = q;
 }
 
 function renderSettings(type, idx) {
     if(!selectedElement) return;
-    
+
     const bg = selectedElement.find('.in-bg').val();
     const tx = selectedElement.find('.in-tx').val();
     const content = selectedElement.find('.in-content').val();
     const link = selectedElement.find('.in-link').val();
-    
+
     // Buat tab content dengan ID yang benar
     let html = `<div class="settings-tabs">
                     <div class="settings-tab active" onclick="showTab('style')">Style</div>
                     <div class="settings-tab" onclick="showTab('content')">Content</div>
                 </div>`;
-    
+
     // TAB STYLE (default: visible)
     html += `<div id="tab-style" class="settings-tab-content">
                 <h6 class="fw-bold small mb-3 text-primary">
@@ -1372,13 +1523,13 @@ function renderSettings(type, idx) {
                     </div>
                 </div>
             </div>`;
-    
+
     // TAB CONTENT (default: hidden)
     html += `<div id="tab-content" class="settings-tab-content" style="display: none;">
                 <h6 class="fw-bold small mb-3 text-primary">
                     <i class="fas fa-edit me-2"></i>Content Settings
                 </h6>`;
-    
+
     // KONTEN SPESIFIK BERDASARKAN TIPE ELEMEN
     if(type === 'button') {
         html += `<div class="mb-3">
@@ -1397,7 +1548,7 @@ function renderSettings(type, idx) {
                         <option value="btn-lg">Large</option>
                     </select>
                 </div>`;
-    } 
+    }
     else if(type === 'faq') {
         let faqs = [];
         try {
@@ -1405,13 +1556,13 @@ function renderSettings(type, idx) {
         } catch(e) {
             faqs = [];
         }
-        
+
         html += `<div class="alert alert-info small mb-3">
                     <i class="fas fa-info-circle me-2"></i>
                     Tambah pertanyaan dan jawaban FAQ di bawah ini
                 </div>
                 <div id="faqList">`;
-        
+
         if(faqs.length > 0) {
             faqs.forEach((f, i) => {
                 html += `<div class="faq-item mb-3 p-3 border rounded">
@@ -1436,12 +1587,12 @@ function renderSettings(type, idx) {
                         <p class="small text-muted">Klik tombol di bawah untuk menambahkan</p>
                     </div>`;
         }
-        
+
         html += `</div>
                 <button class="btn btn-primary w-100 mt-3" onclick="addFaq()">
                     <i class="fas fa-plus me-2"></i>Tambah FAQ Item
                 </button>`;
-    } 
+    }
     else if(type === 'youtube') {
         html += `<div class="mb-3">
                     <label class="form-label">YouTube Video ID</label>
@@ -1464,7 +1615,7 @@ function renderSettings(type, idx) {
                         <option value="ratio-1x1">1:1 (Square)</option>
                     </select>
                 </div>`;
-    } 
+    }
     else if(type === 'image') {
         html += `<div class="mb-3">
                     <label class="form-label">Image URL</label>
@@ -1560,10 +1711,10 @@ function renderSettings(type, idx) {
                     </select>
                 </div>`;
     }
-    
+
     // Tutup tab content
     html += `</div>`;
-    
+
     // Action buttons
     html += `<div class="action-buttons mt-4">
 				<button type="button" class="btn-action btn-export" onclick="window.location.href='export_html.php?id=<?= $page_id ?>'">
@@ -1576,10 +1727,10 @@ function renderSettings(type, idx) {
                     <i class="fas fa-trash me-2"></i>Delete
                 </button>
             </div>`;
-    
+
     // Render ke settings area
     $('#settingsArea').html(html);
-    
+
     // Setup event listeners berdasarkan tipe
     setupEventListeners(type);
 }
@@ -1587,54 +1738,54 @@ function renderSettings(type, idx) {
 // Fungsi untuk setup event listeners
 function setupEventListeners(type) {
     // Background color
-    $('#sBg').on('input', function() { 
-        let v = $(this).val(); 
-        selectedElement.find('.in-bg').val(v); 
-        selectedElement.css('background', v); 
-        if(type==='button') selectedElement.find('.btn').css('color', v); 
+    $('#sBg').on('input', function() {
+        let v = $(this).val();
+        selectedElement.find('.in-bg').val(v);
+        selectedElement.css('background', v);
+        if(type==='button') selectedElement.find('.btn').css('color', v);
         $('.color-preview').first().css('background', v);
     });
-    
+
     // Text color
-    $('#sTx').on('input', function() { 
-        let v = $(this).val(); 
-        selectedElement.find('.in-tx').val(v); 
-        if(type==='divider') selectedElement.find('hr').css('border-color', v); 
-        else if(type==='button') selectedElement.find('.btn').css('background', v); 
-        else selectedElement.css('color', v); 
+    $('#sTx').on('input', function() {
+        let v = $(this).val();
+        selectedElement.find('.in-tx').val(v);
+        if(type==='divider') selectedElement.find('hr').css('border-color', v);
+        else if(type==='button') selectedElement.find('.btn').css('background', v);
+        else selectedElement.css('color', v);
         $('.color-preview').last().css('background', v);
     });
-    
+
     // Konten spesifik berdasarkan tipe
     switch(type) {
         case 'button':
             // Button text
-            $('#sBtnText').on('input', function() { 
-                let v = $(this).val() || 'Klik Disini'; 
+            $('#sBtnText').on('input', function() {
+                let v = $(this).val() || 'Klik Disini';
                 selectedElement.find('.in-content').val(v);
                 selectedElement.find('.btn').text(v);
             });
-            
+
             // Button link
-            $('#sBtnLink').on('input', function() { 
-                let v = $(this).val() || '#'; 
-                selectedElement.find('.in-link').val(v); 
-                selectedElement.find('.btn').attr('href', v); 
+            $('#sBtnLink').on('input', function() {
+                let v = $(this).val() || '#';
+                selectedElement.find('.in-link').val(v);
+                selectedElement.find('.btn').attr('href', v);
             });
-            
+
             // Button size
             $('#sBtnSize').on('change', function() {
                 const btn = selectedElement.find('.btn');
                 btn.removeClass('btn-sm btn-lg').addClass($(this).val());
             });
             break;
-            
+
         case 'image':
             // Image URL
-            $('#sImageUrl').on('input', function() { 
-                let v = $(this).val(); 
+            $('#sImageUrl').on('input', function() {
+                let v = $(this).val();
                 selectedElement.find('.in-content').val(v);
-                
+
                 if(v) {
                     selectedElement.find('img').attr('src', v).removeClass('d-none');
                     selectedElement.find('.d-flex').addClass('d-none');
@@ -1643,7 +1794,7 @@ function setupEventListeners(type) {
                     selectedElement.find('.d-flex').removeClass('d-none');
                 }
             });
-            
+
             // Image style
             $('#sImageStyle').on('change', function() {
                 const img = selectedElement.find('img');
@@ -1651,13 +1802,13 @@ function setupEventListeners(type) {
                 img.addClass($(this).val());
             });
             break;
-            
+
         case 'youtube':
             // YouTube ID
-            $('#sYoutubeId').on('input', function() { 
-                let v = $(this).val(); 
+            $('#sYoutubeId').on('input', function() {
+                let v = $(this).val();
                 selectedElement.find('.in-content').val(v);
-                
+
                 if(v) {
                     const iframe = selectedElement.find('iframe');
                     iframe.attr('src', 'https://www.youtube.com/embed/' + v).removeClass('d-none');
@@ -1667,7 +1818,7 @@ function setupEventListeners(type) {
                     selectedElement.find('.d-flex').removeClass('d-none');
                 }
             });
-            
+
             // Video size
             $('#sVideoSize').on('change', function() {
                 const container = selectedElement.find('.ratio');
@@ -1675,7 +1826,7 @@ function setupEventListeners(type) {
                 container.addClass($(this).val());
             });
             break;
-            
+
         case 'divider':
             // Divider thickness
             $('#sDividerThickness').on('input', function() {
@@ -1683,12 +1834,12 @@ function setupEventListeners(type) {
                 $('#thicknessValue').text(thickness + 'px');
                 selectedElement.find('hr').css('border-width', thickness + 'px');
             });
-            
+
             // Divider style
             $('#sDividerStyle').on('change', function() {
                 selectedElement.find('hr').css('border-style', $(this).val());
             });
-            
+
             // Divider margin
             $('#sDividerMargin').on('input', function() {
                 const margin = $(this).val();
@@ -1696,17 +1847,17 @@ function setupEventListeners(type) {
                 selectedElement.find('hr').css('margin', margin + 'px 0');
             });
             break;
-            
+
         case 'faq':
             // FAQ inputs
-            $('.f-q, .f-a').on('input', function() { 
-                saveFaq(); 
+            $('.f-q, .f-a').on('input', function() {
+                saveFaq();
             });
             break;
-		
+
 		case 'html':
-			$('#sHtmlCode').on('input', function() { 
-				let v = $(this).val(); 
+			$('#sHtmlCode').on('input', function() {
+				let v = $(this).val();
 				selectedElement.find('.in-content').val(v);
 
 				// Update preview
@@ -1719,7 +1870,7 @@ function setupEventListeners(type) {
 				}
 			});
 			break;
-            
+
         case 'header':
         case 'paragraph':
             // Text alignment
@@ -1729,7 +1880,7 @@ function setupEventListeners(type) {
             break;
     }
 }
-	
+
 // Fungsi untuk browse image (placeholder)
 function browseImage() {
     // Daftar gambar placeholder untuk testing
@@ -1744,7 +1895,7 @@ function browseImage() {
         'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38',
         'https://images.unsplash.com/photo-1565958011703-44f9829ba187'
     ];
-    
+
     // Buat modal sederhana untuk pilih gambar
     let modalHtml = `
     <div class="modal fade" id="imageModal" tabindex="-1">
@@ -1778,11 +1929,11 @@ function browseImage() {
             </div>
         </div>
     </div>`;
-    
+
     // Tambahkan modal ke body jika belum ada
     if($('#imageModal').length === 0) {
         $('body').append(modalHtml);
-        
+
         // Event listener untuk pilih gambar
         $(document).on('click', '.image-select-card', function() {
             const url = $(this).data('url');
@@ -1790,7 +1941,7 @@ function browseImage() {
             $('#imageModal').modal('hide');
         });
     }
-    
+
     // Tampilkan modal
     $('#imageModal').modal('show');
 }
@@ -1806,7 +1957,7 @@ function useCustomImage() {
 // Fungsi untuk update FAQ preview
 function updateFaqPreview() {
     if(!selectedElement) return;
-    
+
     const content = selectedElement.find('.in-content').val();
     let faqs = [];
     try {
@@ -1814,7 +1965,7 @@ function updateFaqPreview() {
     } catch(e) {
         faqs = [];
     }
-    
+
     let previewHtml = '';
     if(faqs.length > 0) {
         faqs.forEach(f => {
@@ -1840,28 +1991,28 @@ function updateFaqPreview() {
             <p class="mb-0 small text-muted">Tambahkan FAQ melalui panel settings</p>
         </div>`;
     }
-    
+
     selectedElement.find('.faq-preview').html(previewHtml);
 }
 
 // Perbaikan fungsi saveFaq
 function saveFaq(newC = null) {
     if(!selectedElement) return;
-    
+
     let c = newC;
     if(!c) {
-        c = []; 
+        c = [];
         $('#faqList .faq-item').each(function() {
-            c.push({ 
-                q: $(this).find('.f-q').val(), 
-                a: $(this).find('.f-a').val() 
+            c.push({
+                q: $(this).find('.f-q').val(),
+                a: $(this).find('.f-a').val()
             });
         });
     }
-    
+
     selectedElement.find('.in-content').val(JSON.stringify(c));
     updateFaqPreview();
-    
+
     // Jika ada FAQ baru, refresh settings
     if(newC) {
         const idx = selectedElement.data('element-index');
@@ -1873,13 +2024,13 @@ function saveFaq(newC = null) {
 function showTab(tabName) {
     // Sembunyikan semua tab content
     $('.settings-tab-content').hide();
-    
+
     // Tampilkan tab yang dipilih
     $(`#tab-${tabName}`).show();
-    
+
     // Update active tab
     $('.settings-tab').removeClass('active');
-    
+
     // Temukan tab berdasarkan teksnya
     $('.settings-tab').each(function() {
         if($(this).text().trim().toLowerCase() === tabName.toLowerCase()) {
@@ -1888,42 +2039,42 @@ function showTab(tabName) {
     });
 }
 
-function addFaq() { 
+function addFaq() {
     let c = [];
     try {
-        c = JSON.parse(selectedElement.find('.in-content').val() || '[]'); 
+        c = JSON.parse(selectedElement.find('.in-content').val() || '[]');
     } catch(e) {
         c = [];
     }
-    c.push({q:'', a:''}); 
-    saveFaq(c); 
+    c.push({q:'', a:''});
+    saveFaq(c);
 }
 
-function removeFaq(i) { 
+function removeFaq(i) {
     let c = [];
     try {
-        c = JSON.parse(selectedElement.find('.in-content').val() || '[]'); 
+        c = JSON.parse(selectedElement.find('.in-content').val() || '[]');
     } catch(e) {
         c = [];
     }
-    c.splice(i, 1); 
-    saveFaq(c); 
+    c.splice(i, 1);
+    saveFaq(c);
 }
 
 function saveFaq(newC = null) {
     let c = newC;
     if(!c) {
-        c = []; 
+        c = [];
         $('#faqList .faq-item').each(function() {
-            c.push({ 
-                q: $(this).find('.f-q').val(), 
-                a: $(this).find('.f-a').val() 
+            c.push({
+                q: $(this).find('.f-q').val(),
+                a: $(this).find('.f-a').val()
             });
         });
     }
-    
+
     selectedElement.find('.in-content').val(JSON.stringify(c));
-    
+
     // Update preview
     let previewHtml = '';
     if(c.length > 0) {
@@ -1936,7 +2087,7 @@ function saveFaq(newC = null) {
                         <p class="mb-0 small text-muted">Klik untuk menambahkan FAQ</p>
                       </div>`;
     }
-    
+
     selectedElement.find('.faq-preview').html(previewHtml);
     if(newC) renderSettings('faq', selectedElement.data('element-index'));
 }
@@ -1949,37 +2100,37 @@ function duplicateElement() {
     const bg = selectedElement.find('.in-bg').val();
     const tx = selectedElement.find('.in-tx').val();
     const link = selectedElement.find('.in-link').val();
-    
+
     const st = { bg_color: bg, text_color: tx, link: link };
     const html = `
     <div class="wysiwyg-element" id="el-target-${idx}" data-element-index="${idx}" data-element-type="${type}" style="background:${bg}; color:${tx}">
         <div class="element-badge"><span><i class="fas fa-tag me-1"></i> ${type}</span><i class="fas fa-chevron-down toggle-icon"></i></div>
         <div class="drag-handle"><i class="fas fa-grip-vertical"></i></div>
-        
+
         <input type="hidden" name="elements[${idx}][type]" value="${type}">
         <input type="hidden" name="elements[${idx}][styles][bg_color]" class="in-bg" value="${bg}">
         <input type="hidden" name="elements[${idx}][styles][text_color]" class="in-tx" value="${tx}">
         <input type="hidden" name="elements[${idx}][styles][link]" class="in-link" value="${link}">
-        
+
         <div class="element-content-wrapper">
             ${renderElementContent(type, content, st)}
         </div>
-        
+
         <textarea name="elements[${idx}][content]" class="d-none in-content">${content}</textarea>
     </div>`;
-    
+
     $('#canvasElements').append(html);
     updateIndices();
     updateElementCount();
 }
 
-function deleteElement() { 
-    if(confirm('Are you sure you want to delete this element?')) { 
-        selectedElement.remove(); 
-        $('#settingsArea').html('<div class="empty-state" style="padding: 20px;"><i class="fas fa-cube" style="font-size: 2rem;"></i><p class="mt-3 text-muted">Select an element to edit its properties</p></div>'); 
+function deleteElement() {
+    if(confirm('Are you sure you want to delete this element?')) {
+        selectedElement.remove();
+        $('#settingsArea').html('<div class="empty-state" style="padding: 20px;"><i class="fas fa-cube" style="font-size: 2rem;"></i><p class="mt-3 text-muted">Select an element to edit its properties</p></div>');
         updateIndices();
         updateElementCount();
-        
+
         // Show empty state if no elements left
         if($('#canvasElements .wysiwyg-element').length === 0) {
             $('#canvasElements').html(`
@@ -1994,14 +2145,14 @@ function deleteElement() {
                 </div>
             `);
         }
-    } 
+    }
 }
 
 function updateIndices() {
     $('#canvasElements .wysiwyg-element').each(function(i) {
         $(this).attr({'id': 'el-target-'+i, 'data-element-index': i});
-        $(this).find('[name]').each(function() { 
-            $(this).attr('name', $(this).attr('name').replace(/elements\[\d+\]/, `elements[${i}]`)); 
+        $(this).find('[name]').each(function() {
+            $(this).attr('name', $(this).attr('name').replace(/elements\[\d+\]/, `elements[${i}]`));
         });
         $(this).find('.editable-content').attr('data-editor-index', i);
     });
@@ -2009,9 +2160,9 @@ function updateIndices() {
 }
 
 function updateNav() {
-    const nav = $('#navItems'); 
+    const nav = $('#navItems');
     nav.empty();
-    
+
     const elements = $('#canvasElements .wysiwyg-element');
     const total = elements.length;
 
@@ -2027,7 +2178,7 @@ function updateNav() {
             'faq': 'fas fa-question-circle',
             'html': 'fas fa-code'
         };
-        
+
         nav.append(`
             <div class="nav-item d-flex align-items-center justify-content-between py-2 border-bottom">
                 <div onclick="scrollToElement(${i})" class="flex-grow-1" style="cursor:pointer">
@@ -2050,7 +2201,7 @@ function updateNav() {
 function moveInNav(index, direction) {
     const elements = $('#canvasElements .wysiwyg-element');
     const target = elements.eq(index);
-    
+
     if (direction === -1 && index > 0) {
         // Pindah ke atas (sebelum elemen sebelumnya)
         target.insertBefore(elements.eq(index - 1));
@@ -2058,11 +2209,11 @@ function moveInNav(index, direction) {
         // Pindah ke bawah (setelah elemen sesudahnya)
         target.insertAfter(elements.eq(index + 1));
     }
-    
+
     // Sinkronisasi ulang urutan
     updateIndices();
     updateNav();
-    
+
     // Otomatis scroll ke elemen yang baru dipindah agar tetap terlihat
     scrollToElement(index + direction);
 }
@@ -2083,7 +2234,7 @@ function scrollToElement(i) {
 $(document).ready(function() {
     updateNav();
     updateElementCount();
-    
+
     // Auto-scroll to last edited element if saved
     const urlParams = new URLSearchParams(window.location.search);
     if(urlParams.has('saved')) {
@@ -2095,12 +2246,27 @@ $(document).ready(function() {
             }
         }, 500);
     }
-	
+
 	// Event listener untuk tab settings
     $(document).on('click', '.settings-tab', function() {
         const tabName = $(this).text().trim().toLowerCase();
         showTab(tabName);
     });
+
+    // Logika Toggle Pure HTML
+    $('#isPureHtmlToggle').change(function() {
+        if($(this).is(':checked')) {
+            $('#visualBuilderSection').hide();
+            $('.sidebar-left, .sidebar-right').css({'opacity': '0.3', 'pointer-events': 'none'});
+            $('#pureHtmlSection').fadeIn();
+        } else {
+            $('#visualBuilderSection').show();
+            $('.sidebar-left, .sidebar-right').css({'opacity': '1', 'pointer-events': 'auto'});
+            $('#pureHtmlSection').hide();
+        }
+    });
+    // Trigger saat load pertama kali
+    $('#isPureHtmlToggle').trigger('change');
 });
 </script>
 </body>

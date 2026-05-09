@@ -8,7 +8,7 @@ if (empty($slug)) {
 }
 
 // Ambil data landing page — termasuk meta_event_name
-$stmt = $pdo->prepare("SELECT id, title, slug, meta_pixel_id, capi_endpoint, capi_access_token, status, meta_event_name FROM landing_pages WHERE slug=? LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, title, slug, meta_pixel_id, capi_endpoint, capi_access_token, status, meta_event_name, is_pure_html, pure_html_content FROM landing_pages WHERE slug=? LIMIT 1");
 $stmt->execute([$slug]);
 $p = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -244,6 +244,81 @@ foreach ($elements as $el) {
         break;
     }
 }
+
+// ==========================================
+// INTERCEPT: JIKA MENGGUNAKAN MODE PURE HTML
+// ==========================================
+if (!empty($p['is_pure_html'])) {
+    if (!$is_published) {
+        // Jika belum rilis, tampilkan pesan coming soon
+        echo "<div style='font-family:sans-serif; text-align:center; padding:50px;'>⛔ Maaf, penjualan belum dibuka.</div>";
+        exit;
+    }
+
+    $raw_html = $p['pure_html_content'] ?? '';
+    
+    // Siapkan Script Tracking
+    $tracking_scripts = "";
+    
+    if (!empty($pix['pixel_id'])) {
+        // Injeksi Pixel Header
+        $tracking_scripts .= "
+        <script>
+        setTimeout(function() {
+            !function(f,b,e,v,n,t,s)
+            {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+            n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+            if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+            n.queue=[];t=b.createElement(e);t.async=!0;
+            t.src=v;s=b.getElementsByTagName(e)[0];
+            s.parentNode.insertBefore(t,s)}(window, document,'script',
+            'https://connect.facebook.net/en_US/fbevents.js');
+            fbq('init', '" . htmlspecialchars($pix['pixel_id']) . "');
+            fbq('track', '" . addslashes($meta_event_name) . "');
+        }, 1500);
+        </script>
+        <noscript><img height='1' width='1' style='display:none' src='https://www.facebook.com/tr?id=" . htmlspecialchars($pix['pixel_id']) . "&ev=" . urlencode($meta_event_name) . "&noscript=1'/></noscript>
+        
+        <script>
+        // CAPI Beacon Script
+        (function() {
+            function getCookie(name) {
+                const value = `; \${document.cookie}`;
+                const parts = value.split(`; \${name}=`);
+                if (parts.length === 2) return parts.pop().split(';').shift();
+                return '';
+            }
+            const urlParams = new URLSearchParams(window.location.search);
+            let fbc = urlParams.get('fbclid') || getCookie('_fbc') || '';
+            const fbp = getCookie('_fbp') || '';
+            const payload = {
+                page_slug: '" . addslashes($p['slug']) . "',
+                event: '" . addslashes($meta_event_name) . "',
+                fbp: fbp, fbc: fbc, user_agent: navigator.userAgent
+            };
+            const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon('actions/pageview.php', blob);
+            } else {
+                fetch('actions/pageview.php', { method: 'POST', body: blob, keepalive: true }).catch(() => {});
+            }
+        })();
+        </script>";
+    }
+
+    // Injeksi cerdas ke HTML
+    if (stripos($raw_html, '</head>') !== false) {
+        // Jika ada tag head, letakkan sebelum tutup head
+        $raw_html = str_ireplace('</head>', $tracking_scripts . "\n</head>", $raw_html);
+    } else {
+        // Fallback jika hanya body mentah
+        $raw_html = $tracking_scripts . "\n" . $raw_html;
+    }
+
+    echo $raw_html;
+    exit; // Stop eksekusi agar tidak mencetak builder HTML di bawahnya
+}
+// ==========================================
 ?>
 <!DOCTYPE html>
 <html lang="id">
