@@ -7,8 +7,17 @@ if (empty($slug)) {
     die("Landing page tidak ditemukan");
 }
 
-// Ambil data landing page — termasuk meta_event_name
-$stmt = $pdo->prepare("SELECT id, title, slug, meta_pixel_id, capi_endpoint, capi_access_token, status, meta_event_name, is_pure_html, pure_html_content FROM landing_pages WHERE slug=? LIMIT 1");
+// Ambil data halaman DAN data pixel yang terhubung
+$stmt = $pdo->prepare("
+    SELECT 
+        lp.*, 
+        pp.pixel_id AS actual_pixel_id, 
+        pp.capi_endpoint AS actual_capi_endpoint, 
+        pp.capi_token AS actual_capi_token 
+    FROM landing_pages lp 
+    LEFT JOIN pixel_profiles pp ON lp.pixel_profile_id = pp.id 
+    WHERE lp.slug = ? LIMIT 1
+");
 $stmt->execute([$slug]);
 $p = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -338,23 +347,23 @@ if (!empty($p['is_pure_html'])) {
 <link href="https://fonts.googleapis.com/css2?family=Nunito  :wght@300;400;600;700;800&display=swap" rel="stylesheet">
 
 <!-- Meta Pixel -->
-<?php if (!empty($pix['pixel_id']) && $is_published): ?>
+<?php if (!empty($p['actual_pixel_id'])): ?>
 <script>
-setTimeout(function() {
-    !function(f,b,e,v,n,t,s)
-    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-    n.queue=[];t=b.createElement(e);t.async=!0;
-    t.src=v;s=b.getElementsByTagName(e)[0];
-    s.parentNode.insertBefore(t,s)}(window, document,'script',
-    'https://connect.facebook.net/en_US/fbevents.js  ');
-
-    fbq('init', '<?= htmlspecialchars($pix['pixel_id']) ?>');
-    fbq('track', '<?= addslashes($meta_event_name) ?>');
-}, 1500);
+  !function(f,b,e,v,n,t,s)
+  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+  n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];
+  s.parentNode.insertBefore(t,s)}(window, document,'script',
+  'https://connect.facebook.net/en_US/fbevents.js');
+  
+  // Menggunakan ID Pixel dari profil yang dipilih
+  fbq('init', '<?= $p['actual_pixel_id'] ?>'); 
+  
+  // Menggunakan nama event yang diatur di builder (ViewContent/Lead/dst)
+  fbq('track', '<?= $p['meta_event_name'] ?>');
 </script>
-<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=  <?= htmlspecialchars($pix['pixel_id']) ?>&ev=<?= urlencode($meta_event_name) ?>&noscript=1"/></noscript>
 <?php endif; ?>
 
 <script type="text/javascript">
