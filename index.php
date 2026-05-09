@@ -40,642 +40,589 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
-// Ambil daftar landing page milik user
-$stmt = $pdo->prepare("SELECT * FROM landing_pages WHERE user_id = ? ORDER BY created_at DESC");
+// Handle bulk move ke folder
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'bulk_move_project') {
+    $page_ids = $_POST['page_ids'] ?? [];
+    $project_id = !empty($_POST['project_id']) ? (int)$_POST['project_id'] : null;
+
+    if (empty($page_ids)) {
+        echo json_encode(['status' => 'error', 'message' => 'Tidak ada halaman yang dipilih.']);
+        exit;
+    }
+
+    $page_ids = array_map('intval', $page_ids);
+    $placeholders = str_repeat('?,', count($page_ids) - 1) . '?';
+    
+    $stmt = $pdo->prepare("UPDATE landing_pages SET project_id = ? WHERE id IN ($placeholders) AND user_id = ?");
+    $params = array_merge([$project_id], $page_ids, [$user['id']]);
+    $stmt->execute($params);
+
+    echo json_encode([
+        'status' => 'success',
+        'message' => "Berhasil memindahkan " . $stmt->rowCount() . " landing page ke folder."
+    ]);
+    exit;
+}
+
+// Proses tambah folder baru
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_folder') {
+    $folder_name = trim($_POST['folder_name']);
+    if (!empty($folder_name)) {
+        $stmt = $pdo->prepare("INSERT INTO projects (user_id, name) VALUES (?, ?)");
+        $stmt->execute([$user['id'], $folder_name]);
+        $_SESSION['message'] = "Folder '$folder_name' berhasil dibuat.";
+        header("Location: index.php");
+        exit;
+    }
+}
+
+// Ambil daftar folder
+$stmt = $pdo->prepare("SELECT * FROM projects WHERE user_id = ? ORDER BY name ASC");
 $stmt->execute([$user['id']]);
+$projects = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Map folder untuk kemudahan akses nama
+$folder_map = [];
+foreach ($projects as $proj) {
+    $folder_map[$proj['id']] = $proj['name'];
+}
+
+// Filter berdasarkan folder (opsional)
+$active_project_id = isset($_GET['project_id']) ? (int)$_GET['project_id'] : null;
+
+if ($active_project_id) {
+    $stmt = $pdo->prepare("SELECT * FROM landing_pages WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC");
+    $stmt->execute([$user['id'], $active_project_id]);
+} else {
+    // Tampilkan semua LP (atau bisa diubah WHERE project_id IS NULL jika ingin menampilkan yang belum difolderkan saja)
+    $stmt = $pdo->prepare("SELECT * FROM landing_pages WHERE user_id = ? ORDER BY created_at DESC");
+    $stmt->execute([$user['id']]);
+}
 $landing_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$total_lp = count($landing_pages);
+$published_count = count(array_filter($landing_pages, fn($p) => $p['status'] == 'published'));
+$draft_count = count(array_filter($landing_pages, fn($p) => $p['status'] == 'draft'));
 ?>
 
 <!DOCTYPE html>
-<html>
+<html class="light" lang="id">
 <head>
-    <title>Dashboard - Landing Page Builder</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>LP Builder Pro - Main Dashboard</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                  "primary-fixed": "#dbe1ff", "on-error-container": "#93000a", "inverse-surface": "#2e3039",
+                  "surface": "#faf8ff", "primary": "#004ac6", "surface-tint": "#0053db",
+                  "surface-container-highest": "#e1e2ed", "error": "#ba1a1a",
+                  "surface-container-high": "#e7e7f3", "primary-container": "#2563eb",
+                  "secondary-container": "#dae2fd", "inverse-primary": "#b4c5ff",
+                  "on-primary-fixed-variant": "#003ea8", "outline": "#737686",
+                  "surface-container": "#ededf9", "surface-container-lowest": "#ffffff",
+                  "surface-container-low": "#f3f3fe", "surface-variant": "#e1e2ed",
+                  "secondary": "#565e74", "on-primary-container": "#eeefff",
+                  "on-surface": "#191b23", "outline-variant": "#c3c6d7",
+                  "on-surface-variant": "#434655", "on-primary": "#ffffff",
+                  "tertiary-fixed": "#ffdbcd", "on-tertiary-fixed": "#360f00"
+              },
+              spacing: { "sidebar-width": "260px", "container-max": "1280px" },
+              fontFamily: { "body-md": ["Inter"], "title-sm": ["Inter"], "headline-md": ["Inter"] }
+            }
+          }
+        }
+    </script>
     <style>
-        :root {
-            --primary-gradient: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%);
-            --secondary-gradient: linear-gradient(135deg, #4cc9f0 0%, #4895ef 100%);
-            --success-gradient: linear-gradient(135deg, #4ade80 0%, #10b981 100%);
-            --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            --hover-shadow: 0 15px 40px rgba(67, 97, 238, 0.2);
-        }
-        
-        body {
-            background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
-            min-height: 100vh;
-            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-        }
-        
-        .navbar {
-            background: var(--primary-gradient) !important;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-        
-        .navbar-brand {
-            font-weight: 700;
-            font-size: 1.5rem;
-        }
-        
-        .welcome-card {
-            background: white;
-            border-radius: 16px;
-            box-shadow: var(--card-shadow);
-            border: none;
-            margin-bottom: 2rem;
-            overflow: hidden;
-        }
-        
-        .welcome-card .card-body {
-            padding: 2rem;
-        }
-        
-        .welcome-card h1 {
-            font-weight: 800;
-            background: var(--primary-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        .stats-card {
-            border-radius: 16px;
-            border: none;
-            box-shadow: var(--card-shadow);
-            transition: all 0.3s ease;
-        }
-        
-        .stats-card:hover {
-            transform: translateY(-5px);
-            box-shadow: var(--hover-shadow);
-        }
-        
-        .stats-card .card-body {
-            padding: 1.5rem;
-        }
-        
-        .stats-icon {
-            width: 60px;
-            height: 60px;
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            margin-bottom: 1rem;
-        }
-        
-        .lp-card {
-            border-radius: 16px;
-            border: none;
-            box-shadow: var(--card-shadow);
-            transition: all 0.3s ease;
-            height: 100%;
-            position: relative;
-        }
-        
-        .lp-card:hover {
-            transform: translateY(-8px);
-            box-shadow: var(--hover-shadow);
-        }
-        
-        .lp-card .card-body {
-            padding: 1.5rem;
-        }
-        
-        .lp-card .card-footer {
-            background: #f8f9fa;
-            border-top: 1px solid #e9ecef;
-            padding: 1rem 1.5rem;
-        }
-        
-        .lp-card h5 {
-            font-weight: 700;
-            color: #1e293b;
-        }
-        
-        .btn-primary {
-            background: var(--primary-gradient);
-            border: none;
-            padding: 10px 20px;
-            font-weight: 600;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
-        }
-        
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #3a56e4 0%, #320a8c 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(67, 97, 238, 0.4);
-        }
-        
-        .btn-outline-primary {
-            border-radius: 10px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        
-        .btn-outline-primary:hover {
-            background: var(--primary-gradient);
-            border-color: #4361ee;
-            color: white;
-        }
-        
-        .btn-outline-success {
-            border-radius: 10px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        
-        .btn-outline-success:hover {
-            background: var(--success-gradient);
-            border-color: #10b981;
-            color: white;
-        }
-        
-        .btn-outline-info {
-            border-radius: 10px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        
-        .btn-outline-info:hover {
-            background: var(--secondary-gradient);
-            border-color: #4895ef;
-            color: white;
-        }
-        
-        .btn-outline-danger {
-            border-radius: 10px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        
-        .btn-outline-danger:hover {
-            background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
-            border-color: #f43f5e;
-            color: white;
-        }
-        
-        .badge-success {
-            background: var(--success-gradient);
-        }
-        
-        .badge-secondary {
-            background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
-        }
-        
-        .empty-state {
-            background: white;
-            border-radius: 16px;
-            box-shadow: var(--card-shadow);
-            padding: 4rem 2rem;
-            text-align: center;
-            margin-top: 2rem;
-        }
-        
-        .empty-state i {
-            font-size: 4rem;
-            color: #cbd5e1;
-            margin-bottom: 2rem;
-        }
-        
-        .empty-state h4 {
-            font-weight: 700;
-            color: #1e293b;
-            margin-bottom: 1rem;
-        }
-        
-        .btn-group .btn {
-            border-radius: 0 !important;
-        }
-        
-        .btn-group .btn:first-child {
-            border-radius: 10px 0 0 10px !important;
-        }
-        
-        .btn-group .btn:last-child {
-            border-radius: 0 10px 10px 0 !important;
-        }
-        
-        .stats-number {
-            font-size: 2.5rem;
-            font-weight: 800;
-            margin-bottom: 0.5rem;
-        }
-        
-        .stats-label {
-            font-size: 1.1rem;
-            color: #64748b;
-            font-weight: 500;
-        }
-        
-        .user-info {
-            background: rgba(255, 255, 255, 0.2);
-            padding: 8px 16px;
-            border-radius: 50px;
-            backdrop-filter: blur(10px);
-        }
-
-        .bulk-action-bar {
-            background: white;
-            padding: 1rem;
-            border-radius: 12px;
-            box-shadow: var(--card-shadow);
-            margin-bottom: 1.5rem;
-            display: none;
-        }
-
-        .bulk-action-bar.show {
-            display: block;
-        }
-
-        .bulk-action-bar .form-check {
-            margin-right: 1rem;
-        }
-
-        @media (max-width: 768px) {
-            .stats-number {
-                font-size: 2rem;
-            }
-            
-            .lp-card {
-                margin-bottom: 1.5rem;
-            }
-
-            .bulk-action-bar .row > div {
-                margin-bottom: 1rem;
-            }
-        }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .material-symbols-outlined[data-weight="fill"] { font-variation-settings: 'FILL' 1; }
+        /* Simple scrollbar */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container py-2">
-            <a class="navbar-brand" href="#">
-                <i class="fas fa-cube me-2"></i>
-                LandingPage Builder
-            </a>
-            <div class="d-flex align-items-center">
-                <div class="user-info me-3">
-                    <i class="fas fa-user me-2"></i>
-                    <span><?= htmlspecialchars($user['username']) ?></span>
-                </div>
-                <a href="actions/logout.php" class="btn btn-outline-light">
-                    <i class="fas fa-sign-out-alt me-1"></i>
-                    <span class="d-none d-md-inline">Logout</span>
-                </a>
-            </div>
-        </div>
-    </nav>
+<body class="bg-surface text-on-surface font-body-md text-[14px] h-screen flex overflow-hidden">
 
-    <div class="container mt-4">
-        <!-- Welcome Card -->
-        <div class="welcome-card">
-            <div class="card-body">
-                <h1>Selamat Datang, <?= htmlspecialchars($user['username']) ?>!</h1>
-                <p class="text-muted mb-0">Kelola dan buat landing page Anda dengan mudah menggunakan builder kami.</p>
-            </div>
+<nav class="w-sidebar-width h-screen fixed left-0 top-0 bg-surface-container-low shadow-sm flex flex-col p-4 gap-2 z-20">
+    <div class="flex items-center gap-3 mb-8 px-2">
+        <div class="w-8 h-8 rounded bg-primary-container text-on-primary-container flex items-center justify-center font-bold">LP</div>
+        <div>
+            <h1 class="text-[20px] font-bold text-primary">LP Builder Pro</h1>
+            <p class="text-[12px] text-on-surface-variant">V.2.4.0</p>
         </div>
+    </div>
+    
+    <a href="pages/builder.php<?= $active_project_id ? '?project_id='.$active_project_id : '' ?>" class="w-full bg-primary-container text-on-primary-container py-3 px-4 rounded-xl font-semibold mb-6 flex items-center justify-center gap-2 hover:bg-surface-tint transition-colors shadow-sm">
+        <span class="material-symbols-outlined">add</span> Buat LP Baru
+    </a>
+    
+    <div class="flex flex-col gap-1 flex-grow">
+        <a class="flex items-center gap-3 px-4 py-3 bg-secondary-container text-on-secondary-container rounded-xl font-semibold transition-all" href="index.php">
+            <span class="material-symbols-outlined" data-weight="fill">description</span>
+            <span>Semua Halaman</span>
+        </a>
+    </div>
+    
+    <div class="flex flex-col gap-1 mt-auto pt-4 border-t border-surface-dim">
+        <div class="px-4 py-3 text-on-surface-variant flex items-center gap-3">
+            <span class="material-symbols-outlined">person</span>
+            <span class="font-medium truncate"><?= htmlspecialchars($user['username']) ?></span>
+        </div>
+        <a class="flex items-center gap-3 px-4 py-3 text-error rounded-xl hover:bg-surface-container-highest transition-all" href="actions/logout.php">
+            <span class="material-symbols-outlined">logout</span>
+            <span class="font-medium">Keluar</span>
+        </a>
+    </div>
+</nav>
+
+<main class="ml-[260px] flex-1 flex flex-col h-screen overflow-y-auto bg-surface-container-lowest relative">
+
+    <?php if (isset($_SESSION['message'])): ?>
+        <div id="flashMessage" class="absolute top-4 left-1/2 transform -translate-x-1/2 bg-[#e8f5e9] text-[#2e7d32] border border-[#a5d6a7] px-4 py-3 rounded-lg shadow-md flex items-center gap-2 z-50 transition-opacity duration-500">
+            <span class="material-symbols-outlined">check_circle</span>
+            <span class="font-medium"><?= $_SESSION['message'] ?></span>
+            <button onclick="document.getElementById('flashMessage').style.display='none'" class="ml-4 text-[#2e7d32] hover:text-[#1b5e20]"><span class="material-symbols-outlined text-[18px]">close</span></button>
+        </div>
+        <?php unset($_SESSION['message']); ?>
+    <?php endif; ?>
+
+    <div class="p-8 max-w-container-max mx-auto w-full flex-1">
         
-        <!-- Stats Cards -->
-        <div class="row mb-4">
-            <div class="col-md-4 mb-4">
-                <div class="stats-card bg-white">
-                    <div class="card-body text-center">
-                        <div class="stats-icon bg-primary text-white mx-auto">
-                            <i class="fas fa-file-alt"></i>
-                        </div>
-                        <div class="stats-number"><?= count($landing_pages) ?></div>
-                        <div class="stats-label">Total Landing Page</div>
-                    </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="lg:col-span-2 bg-gradient-to-br from-primary-fixed to-surface-container-low p-8 rounded-xl shadow-sm relative overflow-hidden flex flex-col justify-center border border-outline-variant/20">
+                <div class="relative z-10">
+                    <h2 class="text-[32px] font-bold text-primary mb-2 uppercase">SELAMAT DATANG!</h2>
+                    <p class="text-[15px] text-on-surface-variant max-w-md">Kelola dan buat landing page Anda dengan mudah menggunakan builder kami.</p>
                 </div>
             </div>
-            <div class="col-md-4 mb-4">
-                <div class="stats-card bg-white">
-                    <div class="card-body text-center">
-                        <div class="stats-icon bg-success text-white mx-auto">
-                            <i class="fas fa-check-circle"></i>
-                        </div>
-                        <div class="stats-number">
-                            <?= count(array_filter($landing_pages, function($page) { return $page['status'] == 'published'; })) ?>
-                        </div>
-                        <div class="stats-label">Published</div>
+            
+            <div class="flex flex-col gap-4">
+                <div class="bg-surface-container-lowest p-4 rounded-xl shadow-sm flex items-center justify-between border border-surface-container-highest">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary"><span class="material-symbols-outlined">description</span></div>
+                        <span class="text-[15px] font-medium text-on-surface">Total LP</span>
                     </div>
+                    <span class="text-[24px] font-bold text-on-background"><?= $total_lp ?></span>
                 </div>
-            </div>
-            <div class="col-md-4 mb-4">
-                <div class="stats-card bg-white">
-                    <div class="card-body text-center">
-                        <div class="stats-icon bg-info text-white mx-auto">
-                            <i class="fas fa-edit"></i>
-                        </div>
-                        <div class="stats-number">
-                            <?= count(array_filter($landing_pages, function($page) { return $page['status'] == 'draft'; })) ?>
-                        </div>
-                        <div class="stats-label">Draft</div>
+                <div class="bg-surface-container-lowest p-4 rounded-xl shadow-sm flex items-center justify-between border border-surface-container-highest">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-secondary-container flex items-center justify-center text-on-secondary-container"><span class="material-symbols-outlined">check_circle</span></div>
+                        <span class="text-[15px] font-medium text-on-surface">Published</span>
                     </div>
+                    <span class="text-[24px] font-bold text-on-background"><?= $published_count ?></span>
+                </div>
+                <div class="bg-surface-container-lowest p-4 rounded-xl shadow-sm flex items-center justify-between border border-surface-container-highest">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-[#fff8e1] flex items-center justify-center text-[#f57f17]"><span class="material-symbols-outlined">edit_document</span></div>
+                        <span class="text-[15px] font-medium text-on-surface">Draft</span>
+                    </div>
+                    <span class="text-[24px] font-bold text-on-background"><?= $draft_count ?></span>
                 </div>
             </div>
         </div>
 
-        <!-- Header -->
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2><i class="fas fa-th-large me-2"></i>Landing Page Saya</h2>
-            <a href="pages/builder.php" class="btn btn-primary">
-                <i class="fas fa-plus me-1"></i> Buat Landing Page Baru
-            </a>
-        </div>
-
-        <!-- Alert -->
-        <?php if (isset($_SESSION['message'])): ?>
-            <div class="alert alert-success alert-dismissible fade show rounded-3">
-                <i class="fas fa-check-circle me-2"></i>
-                <?= $_SESSION['message'] ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div class="flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary text-[28px]">folder_copy</span>
+                <h2 class="text-[24px] font-bold text-on-background">Landing Page Saya</h2>
             </div>
-            <?php unset($_SESSION['message']); ?>
-        <?php endif; ?>
-
-        <!-- Bulk Action Bar -->
-        <div class="bulk-action-bar" id="bulkActionBar">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="selectAll">
-                        <label class="form-check-label" for="selectAll">
-                            Pilih Semua
-                        </label>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="input-group">
-                        <select class="form-select" id="bulkActionSelect">
-                            <option value="">Pilih Aksi...</option>
-                            <option value="published">Ubah ke Published</option>
-                            <option value="draft">Ubah ke Draft</option>
-                        </select>
-                        <button class="btn btn-primary" id="applyBulkAction">Terapkan</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Daftar Landing Page -->
-        <?php if (empty($landing_pages)): ?>
-            <div class="empty-state">
-                <i class="fas fa-file-alt"></i>
-                <h4>Belum ada landing page</h4>
-                <p class="text-muted mb-4">Buat landing page pertamamu sekarang!</p>
-                <a href="pages/builder.php" class="btn btn-primary btn-lg">
-                    <i class="fas fa-plus me-2"></i>Buat Landing Page
+            <div class="flex gap-3">
+                <button onclick="openModal('addFolderModal')" class="bg-surface-container-lowest border border-outline-variant text-on-surface-variant px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-surface-container-low transition-colors shadow-sm">
+                    <span class="material-symbols-outlined text-[18px]">create_new_folder</span> Folder Baru
+                </button>
+                <a href="pages/builder.php<?= $active_project_id ? '?project_id='.$active_project_id : '' ?>" class="bg-primary-container text-on-primary-container px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-surface-tint transition-colors shadow-sm">
+                    <span class="material-symbols-outlined text-[18px]">add</span> Buat LP Baru
                 </a>
             </div>
-        <?php else: ?>
-            <div class="row">
-                <?php foreach ($landing_pages as $page): ?>
-                    <div class="col-md-6 col-lg-4 mb-4">
-                        <div class="lp-card">
-                            <div class="card-body">
-                                <div class="form-check mb-3">
-                                    <input class="form-check-input page-checkbox" type="checkbox" value="<?= $page['id'] ?>">
-                                </div>
-                                <h5 class="card-title"><?= htmlspecialchars($page['title']) ?></h5>
-                                <p class="card-text">
-                                    <small class="text-muted">
-                                        <i class="far fa-calendar me-1"></i>
-                                        Dibuat: <?= date('d M Y', strtotime($page['created_at'])) ?><br>
-                                        <i class="fas fa-info-circle me-1"></i>
-                                        Status: 
-                                        <?php if ($page['status'] == 'published'): ?>
-                                            <span class="badge badge-success">Published</span>
-                                        <?php else: ?>
-                                            <span class="badge badge-secondary">Draft</span>
-                                        <?php endif; ?>
-                                    </small>
-                                </p>
-                                <?php if ($page['next_schedule_time']): ?>
-                                    <div class="mt-2">
-                                        <small class="text-info">
-                                            <i class="fas fa-clock me-1"></i>
-                                            Akan jadi <strong><?= $page['next_scheduled_status'] ?></strong> pada: 
-                                            <?= date('d M Y H:i', strtotime($page['next_schedule_time'])) ?>
-                                        </small>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="card-footer">
-                                <div class="btn-group w-100">
-                                    <a href="pages/builder.php?id=<?= $page['id'] ?>" class="btn btn-sm btn-outline-primary" title="Edit">
-                                        <i class="fas fa-edit me-1"></i> Edit
-                                    </a>
-                                    <a href="pages/preview.php?id=<?= $page['id'] ?>" class="btn btn-sm btn-outline-success" title="Preview">
-                                        <i class="fas fa-eye me-1"></i> Preview
-                                    </a>
-                                    <a href="<?= $page['slug'] ?>" class="btn btn-sm btn-outline-info" target="_blank" title="Lihat">
-                                        <i class="fas fa-external-link-alt me-1"></i> Lihat
-                                    </a>
-                                    <a href="#" class="btn btn-sm btn-outline-info" title="Atur Jadwal" 
-                                       onclick="openScheduleModal(<?= $page['id'] ?>, '<?= htmlspecialchars($page['title']) ?>')">
-                                        <i class="fas fa-clock me-1"></i> Jadwal
-                                    </a>
-									<a href="#" class="btn btn-sm btn-outline-warning" title="Duplikat" 
-									   onclick="duplicatePage(<?= $page['id'] ?>, '<?= htmlspecialchars($page['title']) ?>')">
-										<i class="fas fa-copy me-1"></i> Duplikat
-									</a>
-                                    <a href="actions/delete_page.php?id=<?= $page['id'] ?>" class="btn btn-sm btn-outline-danger" 
-                                       onclick="return confirm('Yakin ingin menghapus landing page ini?')" title="Hapus">
-                                        <i class="fas fa-trash"></i>
-                                    </a>
-                                </div>
+        </div>
+
+        <div class="flex overflow-x-auto gap-2 pb-3 mb-4 no-scrollbar border-b border-surface-container-highest">
+            <a href="index.php" class="px-4 py-2 rounded-lg <?= !$active_project_id ? 'bg-secondary-container text-on-secondary-container border-b-2 border-primary font-bold' : 'text-on-surface-variant hover:bg-surface-container font-medium transition-colors' ?> whitespace-nowrap">
+                SEMUA LP
+            </a>
+            <?php foreach($projects as $proj): ?>
+                <a href="index.php?project_id=<?= $proj['id'] ?>" class="px-4 py-2 rounded-lg <?= $active_project_id == $proj['id'] ? 'bg-secondary-container text-on-secondary-container border-b-2 border-primary font-bold' : 'text-on-surface-variant hover:bg-surface-container font-medium transition-colors' ?> whitespace-nowrap">
+                    <?= htmlspecialchars($proj['name']) ?>
+                </a>
+            <?php endforeach; ?>
+        </div>
+
+        <div class="bg-surface-container-lowest rounded-xl shadow-sm border border-surface-container-highest overflow-visible pb-20">
+            
+            <div class="p-4 bg-surface-container-lowest border-b border-surface-container-highest flex items-center justify-between" id="bulkActionBar" style="display: none;">
+                <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" id="selectAll" class="rounded border-outline-variant text-primary-container focus:ring-primary-container w-5 h-5 bg-surface-container-lowest"/>
+                        <span class="font-medium text-on-surface-variant">Pilih Semua</span>
+                    </label>
+                    <span class="text-xs font-bold text-primary bg-primary-fixed px-2 py-1 rounded" id="selectedCount">0</span>
+                </div>
+                <div class="flex gap-2 relative">
+                    <div class="relative inline-block text-left dropdown-container">
+                        <button onclick="toggleDropdown('bulkStatusDropdown')" class="px-3 py-1.5 rounded bg-surface-container-lowest border border-outline-variant text-on-surface-variant font-medium flex items-center gap-2 hover:bg-surface-container-low transition-colors">
+                            Ubah Status <span class="material-symbols-outlined text-[18px]">arrow_drop_down</span>
+                        </button>
+                        <div id="bulkStatusDropdown" class="hidden origin-top-right absolute right-0 mt-2 w-40 rounded-md shadow-lg bg-surface-container-lowest border border-outline-variant ring-1 ring-black ring-opacity-5 z-50">
+                            <div class="py-1">
+                                <button onclick="applyBulkAction('published')" class="block w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low">Set Published</button>
+                                <button onclick="applyBulkAction('draft')" class="block w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low">Set Draft</button>
                             </div>
                         </div>
                     </div>
-                <?php endforeach; ?>
+                    
+                    <div class="relative inline-block text-left dropdown-container">
+                        <button onclick="toggleDropdown('bulkMoveDropdown')" class="px-3 py-1.5 rounded bg-surface-container-lowest border border-outline-variant text-on-surface-variant font-medium flex items-center gap-2 hover:bg-surface-container-low transition-colors">
+                            Pindah Folder <span class="material-symbols-outlined text-[18px]">arrow_drop_down</span>
+                        </button>
+                        <div id="bulkMoveDropdown" class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-surface-container-lowest border border-outline-variant ring-1 ring-black ring-opacity-5 z-50">
+                            <div class="py-1 max-h-60 overflow-y-auto">
+                                <button onclick="applyBulkMove(0)" class="block w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low italic">-- Tanpa Folder --</button>
+                                <?php foreach($projects as $proj): ?>
+                                    <button onclick="applyBulkMove(<?= $proj['id'] ?>)" class="block w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low"><?= htmlspecialchars($proj['name']) ?></button>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-        <?php endif; ?>
-    </div>
 
-    <!-- Modal Jadwal Toggle -->
-    <div class="modal fade" id="scheduleModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Atur Jadwal Toggle</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <?php if (empty($landing_pages)): ?>
+                <div class="p-12 text-center flex flex-col items-center justify-center">
+                    <span class="material-symbols-outlined text-[64px] text-outline mb-4">note_stack</span>
+                    <h4 class="text-[18px] font-bold text-on-surface mb-2">Belum ada landing page</h4>
+                    <p class="text-on-surface-variant mb-6">Buat landing page pertamamu sekarang!</p>
+                    <a href="pages/builder.php<?= $active_project_id ? '?project_id='.$active_project_id : '' ?>" class="bg-primary text-on-primary px-6 py-2 rounded-lg font-medium hover:bg-primary-container transition-colors shadow-sm">Buat Landing Page</a>
                 </div>
-                <div class="modal-body">
-                    <form id="scheduleForm">
-                        <input type="hidden" id="schedulePageId" name="page_id">
-                        <div class="mb-3">
-                            <label class="form-label">Status Baru</label>
-                            <select class="form-select" name="new_status" required>
-                                <option value="published">Published</option>
-                                <option value="draft">Draft</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Tanggal & Waktu</label>
-                            <input type="datetime-local" class="form-control" name="schedule_time" required>
-                        </div>
-                    </form>
+            <?php else: ?>
+                <div class="w-full overflow-x-auto min-h-[300px]">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-surface-container-low text-on-surface-variant text-[12px] font-bold uppercase tracking-wider border-b border-surface-container-highest">
+                                <th class="p-4 w-12 text-center">
+                                    <span class="material-symbols-outlined text-[18px] text-outline-variant">check_box_outline_blank</span>
+                                </th>
+                                <th class="p-4">NAMA HALAMAN & FOLDER</th>
+                                <th class="p-4">STATUS</th>
+                                <th class="p-4">TANGGAL</th>
+                                <th class="p-4 text-right">AKSI</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-on-surface">
+                            <?php foreach ($landing_pages as $page): ?>
+                                <tr class="border-b border-surface-container-highest hover:bg-surface-container-low transition-colors group">
+                                    <td class="p-4 text-center">
+                                        <input type="checkbox" class="page-checkbox rounded border-outline-variant text-primary-container focus:ring-primary-container w-5 h-5 bg-surface-container-lowest" value="<?= $page['id'] ?>">
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="flex items-center gap-4">
+                                            <div class="w-12 h-12 bg-surface-dim rounded-lg overflow-hidden flex-shrink-0 border border-outline-variant flex items-center justify-center text-outline">
+                                                <span class="material-symbols-outlined text-[24px]">web</span>
+                                            </div>
+                                            <div>
+                                                <div class="text-[15px] font-bold text-on-background mb-1"><?= htmlspecialchars($page['title']) ?></div>
+                                                <div class="flex items-center gap-1 text-on-surface-variant text-[13px]">
+                                                    <?php if ($page['project_id'] && isset($folder_map[$page['project_id']])): ?>
+                                                        <span class="material-symbols-outlined text-[14px]">folder</span> Folder: <?= htmlspecialchars($folder_map[$page['project_id']]) ?>
+                                                    <?php else: ?>
+                                                        <span class="italic opacity-70">-- Tanpa Folder --</span>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="p-4">
+                                        <?php if ($page['status'] == 'published'): ?>
+                                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-[#e8f5e9] text-[#2e7d32]">PUBLISHED</span>
+                                        <?php else: ?>
+                                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-[#fff8e1] text-[#f57f17]">DRAFT</span>
+                                        <?php endif; ?>
+                                        
+                                        <?php if ($page['next_schedule_time']): ?>
+                                            <div class="mt-1 text-[11px] text-primary flex items-center gap-1">
+                                                <span class="material-symbols-outlined text-[12px]">schedule</span> 
+                                                <span>=> <?= strtoupper($page['next_scheduled_status']) ?> (<?= date('d/m/y H:i', strtotime($page['next_schedule_time'])) ?>)</span>
+                                            </div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="p-4 text-on-surface-variant text-[13px] font-medium">
+                                        <?= date('d M Y', strtotime($page['created_at'])) ?>
+                                    </td>
+                                    <td class="p-4 text-right">
+                                        <div class="flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <a href="pages/builder.php?id=<?= $page['id'] ?>" class="p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-primary transition-colors" title="Edit Builder">
+                                                <span class="material-symbols-outlined text-[20px]">edit</span>
+                                            </a>
+                                            <a href="pages/preview.php?id=<?= $page['id'] ?>" target="_blank" class="p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest transition-colors" title="Preview">
+                                                <span class="material-symbols-outlined text-[20px]">visibility</span>
+                                            </a>
+                                            <div class="relative inline-block text-left dropdown-container">
+                                                <button onclick="toggleDropdown('actionMenu-<?= $page['id'] ?>')" class="p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest transition-colors" title="Aksi Lainnya">
+                                                    <span class="material-symbols-outlined text-[20px]">more_vert</span>
+                                                </button>
+                                                <div id="actionMenu-<?= $page['id'] ?>" class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-surface-container-lowest border border-outline-variant ring-1 ring-black ring-opacity-5 z-50">
+                                                    <div class="py-1">
+                                                        <a href="<?= $page['slug'] ?>" target="_blank" class="flex items-center gap-2 px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low"><span class="material-symbols-outlined text-[18px]">public</span> Buka Live URL</a>
+                                                        <button onclick="openScheduleModal(<?= $page['id'] ?>, '<?= htmlspecialchars(addslashes($page['title'])) ?>')" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low text-left"><span class="material-symbols-outlined text-[18px]">schedule</span> Atur Jadwal</button>
+                                                        
+                                                        <div class="border-t border-b border-surface-variant my-1 px-4 py-2 text-xs font-bold text-on-surface-variant">Pindah Folder:</div>
+                                                        <button onclick="moveSinglePage(<?= $page['id'] ?>, null)" class="w-full flex items-center px-4 py-1.5 text-sm text-on-surface hover:bg-surface-container-low text-left italic">-- Tanpa Folder --</button>
+                                                        <?php foreach($projects as $proj): ?>
+                                                            <button onclick="moveSinglePage(<?= $page['id'] ?>, <?= $proj['id'] ?>)" class="w-full flex items-center px-4 py-1.5 text-sm text-on-surface hover:bg-surface-container-low text-left"><span class="material-symbols-outlined text-[16px] mr-2 text-outline-variant">folder</span> <?= htmlspecialchars($proj['name']) ?></button>
+                                                        <?php endforeach; ?>
+
+                                                        <div class="border-t border-surface-variant my-1"></div>
+                                                        <button onclick="duplicatePage(<?= $page['id'] ?>, '<?= htmlspecialchars(addslashes($page['title'])) ?>')" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-[#f57f17] hover:bg-surface-container-low text-left"><span class="material-symbols-outlined text-[18px]">content_copy</span> Duplikat</button>
+                                                        <a href="actions/delete_page.php?id=<?= $page['id'] ?>" onclick="return confirm('Yakin ingin menghapus halaman ini secara permanen?')" class="flex items-center gap-2 px-4 py-2 text-sm text-error hover:bg-error-container/20"><span class="material-symbols-outlined text-[18px]">delete</span> Hapus</a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                    <button type="button" class="btn btn-primary" id="saveScheduleBtn">Simpan Jadwal</button>
-                </div>
-            </div>
+            <?php endif; ?>
         </div>
     </div>
+</main>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const checkboxes = document.querySelectorAll('.page-checkbox');
-            const selectAll = document.getElementById('selectAll');
-            const bulkActionBar = document.getElementById('bulkActionBar');
-            const bulkActionSelect = document.getElementById('bulkActionSelect');
-            const applyBulkAction = document.getElementById('applyBulkAction');
-            let currentSchedulePageId = null;
+<div id="modalOverlay" class="fixed inset-0 bg-on-background/40 backdrop-blur-sm z-[100] hidden items-center justify-center p-4">
+    
+    <div id="addFolderModal" class="hidden bg-surface-container-lowest rounded-xl shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.2)] w-full max-w-[480px] flex-col overflow-hidden border border-outline-variant/30 relative transform transition-all">
+        <form method="POST">
+            <input type="hidden" name="action" value="add_folder">
+            <div class="flex justify-between items-center p-6 border-b border-surface-variant">
+                <h2 class="text-[18px] font-bold text-on-surface flex items-center gap-2">
+                    <span class="material-symbols-outlined text-[24px] text-primary">create_new_folder</span> Buat Folder Baru
+                </h2>
+                <button type="button" onclick="closeModal('addFolderModal')" class="text-on-surface-variant hover:text-on-surface p-1 rounded-full hover:bg-surface-container-low transition-colors">
+                    <span class="material-symbols-outlined text-[20px]">close</span>
+                </button>
+            </div>
+            <div class="p-6">
+                <div class="flex flex-col gap-2">
+                    <label class="text-[14px] font-semibold text-on-surface-variant">Nama Folder / Produk</label>
+                    <input type="text" name="folder_name" placeholder="Contoh: Program Ramadhan" required class="w-full px-4 py-2 border border-outline-variant rounded-lg text-on-surface bg-surface-container-lowest focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"/>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-surface-container-lowest border-t border-surface-variant flex justify-end gap-3">
+                <button type="button" onclick="closeModal('addFolderModal')" class="px-4 py-2 text-[14px] font-medium text-secondary hover:bg-surface-container-low rounded-lg transition-colors">Batal</button>
+                <button type="submit" class="px-4 py-2 text-[14px] font-medium text-on-primary bg-primary rounded-lg hover:bg-primary-container transition-colors shadow-sm">Simpan</button>
+            </div>
+        </form>
+    </div>
 
-            function updateBulkActionBar() {
-                const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
-                bulkActionBar.classList.toggle('show', anyChecked);
-            }
+    <div id="scheduleModal" class="hidden bg-surface-container-lowest rounded-xl shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.2)] w-full max-w-[480px] flex-col overflow-hidden border border-outline-variant/30 relative transform transition-all">
+        <form id="scheduleForm">
+            <input type="hidden" id="schedulePageId" name="page_id">
+            <div class="flex justify-between items-center p-6 border-b border-surface-variant">
+                <h2 class="text-[18px] font-bold text-on-surface flex items-center gap-2" id="scheduleModalTitle">
+                    <span class="material-symbols-outlined text-[24px] text-primary">schedule</span> Atur Jadwal
+                </h2>
+                <button type="button" onclick="closeModal('scheduleModal')" class="text-on-surface-variant hover:text-on-surface p-1 rounded-full hover:bg-surface-container-low transition-colors">
+                    <span class="material-symbols-outlined text-[20px]">close</span>
+                </button>
+            </div>
+            <div class="p-6 flex flex-col gap-5">
+                <div class="flex flex-col gap-2">
+                    <label class="text-[14px] font-semibold text-on-surface-variant">Status Baru</label>
+                    <div class="relative">
+                        <select name="new_status" required class="w-full appearance-none px-4 py-2 border border-outline-variant rounded-lg text-on-surface bg-surface-container-lowest focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all cursor-pointer">
+                            <option value="published">Published (Aktifkan Web)</option>
+                            <option value="draft">Draft (Matikan Web)</option>
+                        </select>
+                        <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">expand_more</span>
+                    </div>
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label class="text-[14px] font-semibold text-on-surface-variant">Tanggal & Waktu</label>
+                    <input type="datetime-local" name="schedule_time" required class="w-full px-4 py-2 border border-outline-variant rounded-lg text-on-surface bg-surface-container-lowest focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"/>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-surface-container-lowest border-t border-surface-variant flex justify-end gap-3">
+                <button type="button" onclick="closeModal('scheduleModal')" class="px-4 py-2 text-[14px] font-medium text-secondary hover:bg-surface-container-low rounded-lg transition-colors">Batal</button>
+                <button type="button" id="saveScheduleBtn" class="px-4 py-2 text-[14px] font-medium text-on-primary bg-primary rounded-lg hover:bg-primary-container transition-colors shadow-sm">Simpan Jadwal</button>
+            </div>
+        </form>
+    </div>
 
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', updateBulkActionBar);
+</div>
+
+<script>
+    // --- Modals Logic ---
+    const modalOverlay = document.getElementById('modalOverlay');
+    
+    function openModal(modalId) {
+        modalOverlay.classList.remove('hidden');
+        modalOverlay.classList.add('flex');
+        document.getElementById(modalId).classList.remove('hidden');
+        document.getElementById(modalId).classList.add('flex');
+    }
+
+    function closeModal(modalId) {
+        modalOverlay.classList.add('hidden');
+        modalOverlay.classList.remove('flex');
+        document.getElementById(modalId).classList.add('hidden');
+        document.getElementById(modalId).classList.remove('flex');
+    }
+
+    // --- Dropdowns Logic ---
+    function toggleDropdown(dropdownId) {
+        const dropdown = document.getElementById(dropdownId);
+        const isHidden = dropdown.classList.contains('hidden');
+        
+        // Hide all other dropdowns first
+        document.querySelectorAll('.dropdown-container > div:not(.hidden)').forEach(el => {
+            if(el.id !== dropdownId) el.classList.add('hidden');
+        });
+
+        if (isHidden) {
+            dropdown.classList.remove('hidden');
+        } else {
+            dropdown.classList.add('hidden');
+        }
+    }
+
+    // Close dropdowns if clicked outside
+    document.addEventListener('click', function(event) {
+        if (!event.target.closest('.dropdown-container')) {
+            document.querySelectorAll('.dropdown-container > div:not(.hidden)').forEach(el => {
+                el.classList.add('hidden');
             });
+        }
+    });
 
+    // --- Core Logic ---
+    document.addEventListener('DOMContentLoaded', function() {
+        const checkboxes = document.querySelectorAll('.page-checkbox');
+        const selectAll = document.getElementById('selectAll');
+        const bulkActionBar = document.getElementById('bulkActionBar');
+        const selectedCountEl = document.getElementById('selectedCount');
+
+        // Checkbox Logic
+        function updateBulkActionBar() {
+            const checkedBoxes = Array.from(checkboxes).filter(cb => cb.checked);
+            if (checkedBoxes.length > 0) {
+                bulkActionBar.style.display = 'flex';
+                selectedCountEl.textContent = checkedBoxes.length;
+            } else {
+                bulkActionBar.style.display = 'none';
+                selectAll.checked = false;
+            }
+        }
+
+        checkboxes.forEach(cb => {
+            cb.addEventListener('change', updateBulkActionBar);
+        });
+
+        if(selectAll) {
             selectAll.addEventListener('change', function() {
                 checkboxes.forEach(cb => cb.checked = this.checked);
                 updateBulkActionBar();
             });
+        }
 
-            applyBulkAction.addEventListener('click', function() {
-                const selectedStatus = bulkActionSelect.value;
-                if (!selectedStatus) {
-                    alert('Pilih aksi terlebih dahulu!');
-                    return;
-                }
+        // Action: Bulk Update Status
+        window.applyBulkAction = function(selectedStatus) {
+            const selectedIds = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
+            if (selectedIds.length === 0) return;
 
-                const selectedIds = Array.from(checkboxes)
-                    .filter(cb => cb.checked)
-                    .map(cb => cb.value);
+            const formData = new URLSearchParams();
+            formData.append('action', 'bulk_update_status');
+            formData.append('status', selectedStatus);
+            selectedIds.forEach(id => formData.append('page_ids[]', id));
 
-                if (selectedIds.length === 0) {
-                    alert('Pilih minimal satu landing page!');
-                    return;
-                }
-
-                const formData = new URLSearchParams();
-                formData.append('action', 'bulk_update_status');
-                formData.append('status', selectedStatus);
-                selectedIds.forEach(id => {
-                    formData.append('page_ids[]', id);
-                });
-
-                fetch('', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        const alertDiv = document.createElement('div');
-                        alertDiv.className = 'alert alert-success alert-dismissible fade show rounded-3 fixed-top mt-5 mx-auto w-50';
-                        alertDiv.style.zIndex = 1050;
-                        alertDiv.innerHTML = `
-                            <i class="fas fa-check-circle me-2"></i>
-                            ${data.message}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        `;
-                        document.body.appendChild(alertDiv);
-
-                        setTimeout(() => {
-                            const bsAlert = new bootstrap.Alert(alertDiv);
-                            bsAlert.close();
-                        }, 3000);
-
-                        checkboxes.forEach(cb => cb.checked = false);
-                        selectAll.checked = false;
-                        bulkActionSelect.value = '';
-                        updateBulkActionBar();
-
-                        setTimeout(() => location.reload(), 1500);
-                    } else {
-                        alert('Gagal: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Terjadi kesalahan saat memproses permintaan.');
-                });
+            fetch('', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            }).then(r => r.json()).then(data => {
+                if (data.status === 'success') { location.reload(); } else { alert(data.message); }
             });
+        };
 
-            // Fungsi untuk membuka modal jadwal
-            window.openScheduleModal = function(pageId, title) {
-                currentSchedulePageId = pageId;
-                document.getElementById('schedulePageId').value = pageId;
-                document.getElementById('scheduleModal').querySelector('.modal-title').textContent = `Atur Jadwal: ${title}`;
-                new bootstrap.Modal(document.getElementById('scheduleModal')).show();
-            };
+        // Action: Bulk Move Folder
+        window.applyBulkMove = function(selectedProjectId) {
+            const selectedIds = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
+            if (selectedIds.length === 0) return;
 
-            // Simpan jadwal
-            document.getElementById('saveScheduleBtn').addEventListener('click', function() {
-                const formData = new FormData(document.getElementById('scheduleForm'));
-                formData.append('action', 'schedule_toggle');
+            const formData = new URLSearchParams();
+            formData.append('action', 'bulk_move_project');
+            formData.append('project_id', selectedProjectId === 0 ? '' : selectedProjectId);
+            selectedIds.forEach(id => formData.append('page_ids[]', id));
 
-                fetch('actions/schedule_toggle.php', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        alert(data.message);
-                        location.reload();
-                    } else {
-                        alert('Gagal: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Terjadi kesalahan.');
-                });
+            fetch('', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            }).then(r => r.json()).then(data => {
+                if (data.status === 'success') { location.reload(); } else { alert(data.message); }
+            });
+        };
+
+        // Action: Single Move
+        window.moveSinglePage = function(pageId, projectId) {
+            const formData = new URLSearchParams();
+            formData.append('action', 'bulk_move_project');
+            formData.append('project_id', projectId || '');
+            formData.append('page_ids[]', pageId);
+
+            fetch('', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            }).then(r => r.json()).then(data => {
+                if (data.status === 'success') { location.reload(); }
+            });
+        };
+
+        // Action: Schedule Setup
+        window.openScheduleModal = function(pageId, title) {
+            document.getElementById('schedulePageId').value = pageId;
+            document.getElementById('scheduleModalTitle').innerHTML = `<span class="material-symbols-outlined text-[24px] text-primary">schedule</span> Atur Jadwal: ${title}`;
+            openModal('scheduleModal');
+        };
+
+        // Action: Save Schedule
+        document.getElementById('saveScheduleBtn').addEventListener('click', function() {
+            const form = document.getElementById('scheduleForm');
+            if(!form.checkValidity()) { form.reportValidity(); return; }
+
+            const formData = new FormData(form);
+            formData.append('action', 'schedule_toggle');
+
+            fetch('actions/schedule_toggle.php', {
+                method: 'POST',
+                body: formData
+            }).then(r => r.json()).then(data => {
+                if (data.status === 'success') { location.reload(); } else { alert(data.message); }
             });
         });
-		function duplicatePage(pageId, title) {
-			if (!confirm(`Duplikat "${title}"?`)) return;
 
-			const formData = new FormData();
-			formData.append('page_id', pageId);
-			formData.append('action', 'duplicate');
+        // Action: Duplicate
+        window.duplicatePage = function(pageId, title) {
+            if (!confirm(`Duplikat halaman "${title}"?`)) return;
 
-			fetch('actions/duplicate_page.php', {
-				method: 'POST',
-				body: formData
-			})
-			.then(response => response.json())
-			.then(data => {
-				if (data.status === 'success') {
-					alert(data.message);
-					location.reload();
-				} else {
-					alert('Gagal: ' + data.message);
-				}
-			})
-			.catch(error => {
-				console.error('Error:', error);
-				alert('Terjadi kesalahan.');
-			});
-		}
-    </script>
+            const formData = new FormData();
+            formData.append('page_id', pageId);
+            formData.append('action', 'duplicate');
+
+            fetch('actions/duplicate_page.php', {
+                method: 'POST',
+                body: formData
+            }).then(r => r.json()).then(data => {
+                if (data.status === 'success') { location.reload(); } else { alert(data.message); }
+            });
+        };
+    });
+</script>
 </body>
 </html>
