@@ -29,20 +29,23 @@ if (!$p) {
 $is_published = ($p['status'] ?? '') === 'published';
 $meta_event_name = trim($p['meta_event_name'] ?? 'ViewContent');
 
-// Parsing pixel & CAPI
+// Parsing pixel & CAPI: Gunakan data profil (actual_*) jika ada, jika tidak fallback ke kolom lama
 $pix = [
-    'pixel_id' => trim($p['meta_pixel_id'] ?? ''),
-    'capi_endpoint' => $p['capi_endpoint'] ?? '',
-    'capi_access_token' => $p['capi_access_token'] ?? ''
+    'pixel_id' => trim($p['actual_pixel_id'] ?: ($p['meta_pixel_id'] ?? '')),
+    'capi_endpoint' => trim($p['actual_capi_endpoint'] ?: ($p['capi_endpoint'] ?? '')),
+    'capi_access_token' => trim($p['actual_capi_token'] ?: ($p['capi_access_token'] ?? ''))
 ];
 
+// Fallback jika menyimpan JSON di kolom lama (Opsional, untuk backward compatibility)
 $t = json_decode($p['meta_pixel_id'] ?? '', true);
 if (is_array($t) && !empty($t['pixel_id'])) {
-    $pix = array_merge($pix, $t);
+    $pix['pixel_id'] = $t['pixel_id'];
+    $pix['capi_endpoint'] = $t['capi_endpoint'] ?? $pix['capi_endpoint'];
+    $pix['capi_access_token'] = $t['capi_access_token'] ?? $pix['capi_access_token'];
 }
 
 if (empty($pix['capi_endpoint']) && !empty($pix['pixel_id'])) {
-    $pix['capi_endpoint'] = "https://graph.facebook.com/v23.0/  {$pix['pixel_id']}/events";
+    $pix['capi_endpoint'] = "https://graph.facebook.com/v23.0/{$pix['pixel_id']}/events";
 }
 
 // Query elements
@@ -71,7 +74,7 @@ foreach ($elements as $element) {
             break;
             
         case 'divider':
-            $thickness = $styles['thickness'] ?? '2'; // Angka saja
+            $thickness = $styles['thickness'] ?? '2';
 			$divider_style = $styles['divider_style'] ?? 'solid';
 			$margin = $styles['margin'] ?? '20';
 			echo "<div class='divider-element' style='margin: {$margin}px 0;'>";
@@ -259,18 +262,14 @@ foreach ($elements as $el) {
 // ==========================================
 if (!empty($p['is_pure_html'])) {
     if (!$is_published) {
-        // Jika belum rilis, tampilkan pesan coming soon
         echo "<div style='font-family:sans-serif; text-align:center; padding:50px;'>⛔ Maaf, penjualan belum dibuka.</div>";
         exit;
     }
 
     $raw_html = $p['pure_html_content'] ?? '';
-    
-    // Siapkan Script Tracking
     $tracking_scripts = "";
     
     if (!empty($pix['pixel_id'])) {
-        // Injeksi Pixel Header
         $tracking_scripts .= "
         <script>
         setTimeout(function() {
@@ -289,7 +288,6 @@ if (!empty($p['is_pure_html'])) {
         <noscript><img height='1' width='1' style='display:none' src='https://www.facebook.com/tr?id=" . htmlspecialchars($pix['pixel_id']) . "&ev=" . urlencode($meta_event_name) . "&noscript=1'/></noscript>
         
         <script>
-        // CAPI Beacon Script
         (function() {
             function getCookie(name) {
                 const value = `; \${document.cookie}`;
@@ -315,17 +313,14 @@ if (!empty($p['is_pure_html'])) {
         </script>";
     }
 
-    // Injeksi cerdas ke HTML
     if (stripos($raw_html, '</head>') !== false) {
-        // Jika ada tag head, letakkan sebelum tutup head
         $raw_html = str_ireplace('</head>', $tracking_scripts . "\n</head>", $raw_html);
     } else {
-        // Fallback jika hanya body mentah
         $raw_html = $tracking_scripts . "\n" . $raw_html;
     }
 
     echo $raw_html;
-    exit; // Stop eksekusi agar tidak mencetak builder HTML di bawahnya
+    exit; 
 }
 // ==========================================
 ?>
@@ -344,10 +339,8 @@ if (!empty($p['is_pure_html'])) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700;800&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Nunito  :wght@300;400;600;700;800&display=swap" rel="stylesheet">
 
-<!-- Meta Pixel -->
-<?php if (!empty($p['actual_pixel_id'])): ?>
+<?php if (!empty($pix['pixel_id'])): ?>
 <script>
   !function(f,b,e,v,n,t,s)
   {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -358,18 +351,16 @@ if (!empty($p['is_pure_html'])) {
   s.parentNode.insertBefore(t,s)}(window, document,'script',
   'https://connect.facebook.net/en_US/fbevents.js');
   
-  // Menggunakan ID Pixel dari profil yang dipilih
-  fbq('init', '<?= $p['actual_pixel_id'] ?>'); 
-  
-  // Menggunakan nama event yang diatur di builder (ViewContent/Lead/dst)
-  fbq('track', '<?= $p['meta_event_name'] ?>');
+  fbq('init', '<?= htmlspecialchars($pix['pixel_id']) ?>'); 
+  fbq('track', '<?= htmlspecialchars($meta_event_name) ?>');
 </script>
+<noscript><img height='1' width='1' style='display:none' src='https://www.facebook.com/tr?id=<?= htmlspecialchars($pix['pixel_id']) ?>&ev=<?= urlencode($meta_event_name) ?>&noscript=1'/></noscript>
 <?php endif; ?>
 
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
         c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/  "+i;
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
         y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
     })(window, document, "clarity", "script", "u9ebbwavns");
 </script>
@@ -397,16 +388,9 @@ p{margin:0 0 0.25em}
 .custom-button.btn-lg{padding:14px 28px;font-size:28px}
 .form-element{margin-bottom:15px;background:#f8f9fa;padding:20px;border-radius:10px;border:1px solid #e9ecef}
 .custom-html-element{margin-bottom:8px}
-.video-element, .audio-element, .iframe-element, .youtube-element {
-    margin-bottom: 20px;
-}
-.video-element video, .iframe-element iframe {
-    max-width: 100%;
-    border-radius: 8px;
-}
-.audio-element audio {
-    width: 100%;
-}
+.video-element, .audio-element, .iframe-element, .youtube-element { margin-bottom: 20px; }
+.video-element video, .iframe-element iframe { max-width: 100%; border-radius: 8px; }
+.audio-element audio { width: 100%; }
 .divider-line{border:0;height:20px;border-top:1px solid #ccc;margin:6px auto}
 .divider-dashed{border-top:2px dashed #ccc}
 .divider-dotted{border-top:2px dotted #ccc}
@@ -418,128 +402,37 @@ p{margin:0 0 0.25em}
 .w-100{width:100%}
 .mb-2{margin-bottom:15px}
 .mb-3{margin-bottom:20px}
-.coming-soon-notice {
-    text-align: center;
-    padding: 30px 20px;
-    background: #fef5f5;
-    border-radius: 10px;
-    border: 2px dashed #e74c3c;
-    margin: 20px 0;
-}
-.coming-soon-notice p {
-    margin: 0;
-}
-.testimonial-element, .faq-element {
-    margin-top: 20px;
-}
-.faq-question:hover {
-    background-color: #f5f7fa;
-}
-.faq-toggle {
-    font-size: 1.2em;
-    font-weight: bold;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+.coming-soon-notice { text-align: center; padding: 30px 20px; background: #fef5f5; border-radius: 10px; border: 2px dashed #e74c3c; margin: 20px 0; }
+.coming-soon-notice p { margin: 0; }
+.testimonial-element, .faq-element { margin-top: 20px; }
+.faq-question:hover { background-color: #f5f7fa; }
+.faq-toggle { font-size: 1.2em; font-weight: bold; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
 
-/* Ratio classes for YouTube/video */
-.ratio-16x9 {
-    position: relative;
-    padding-bottom: 56.25%;
-    height: 0;
-    overflow: hidden;
-}
-.ratio-4x3 {
-    position: relative;
-    padding-bottom: 75%;
-    height: 0;
-    overflow: hidden;
-}
-.ratio-1x1 {
-    position: relative;
-    padding-bottom: 100%;
-    height: 0;
-    overflow: hidden;
-}
-.ratio-16x9 iframe,
-.ratio-4x3 iframe,
-.ratio-1x1 iframe {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    border: 0;
-}
+/* Ratio classes */
+.ratio-16x9 { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; }
+.ratio-4x3 { position: relative; padding-bottom: 75%; height: 0; overflow: hidden; }
+.ratio-1x1 { position: relative; padding-bottom: 100%; height: 0; overflow: hidden; }
+.ratio-16x9 iframe, .ratio-4x3 iframe, .ratio-1x1 iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
 
 /* Image classes */
-.img-fluid {
-    max-width: 100%;
-    height: auto;
-}
-.img-thumbnail {
-    padding: 4px;
-    background-color: #fff;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    max-width: 100%;
-    height: auto;
-}
-.rounded {
-    border-radius: 8px;
-}
-.rounded-circle {
-    border-radius: 50%;
-}
+.img-fluid { max-width: 100%; height: auto; }
+.img-thumbnail { padding: 4px; background-color: #fff; border: 1px solid #dee2e6; border-radius: 4px; max-width: 100%; height: auto; }
+.rounded { border-radius: 8px; }
+.rounded-circle { border-radius: 50%; }
 
-/* Quill editor specific styles */
+/* Quill & Blockquote */
 .ql-size-small { font-size: 0.75em; }
 .ql-size-large { font-size: 1.5em; }
 .ql-size-huge { font-size: 2.5em; }
-blockquote {
-    border-left: 4px solid #4361ee;
-    padding-left: 16px;
-    margin: 10px 0;
-    font-style: italic;
-    color: #555;
-    background: #f8f9fa;
-    padding: 15px;
-    border-radius: 0 4px 4px 0;
-}
-/* FAQ Element */
-.faq-element {
-    margin-top: 20px;
-}
+blockquote { border-left: 4px solid #4361ee; padding-left: 16px; margin: 10px 0; font-style: italic; color: #555; background: #f8f9fa; padding: 15px; border-radius: 0 4px 4px 0; }
 
-.faq-item {
-    margin-bottom: 0;
-    padding-bottom: 0;
-}
-
-.faq-item:last-child {
-    border-bottom: none;
-}
-
-.faq-question {
-    transition: background 0.3s ease;
-}
-
-.faq-question:hover {
-    background-color: #f5f7fa;
-}
-
-.faq-toggle {
-    font-size: 1.2em;
-    font-weight: bold;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}	
+/* FAQ */
+.faq-element { margin-top: 20px; }
+.faq-item { margin-bottom: 0; padding-bottom: 0; }
+.faq-item:last-child { border-bottom: none; }
+.faq-question { transition: background 0.3s ease; }
+.faq-question:hover { background-color: #f5f7fa; }
+.faq-toggle { font-size: 1.2em; font-weight: bold; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }	
 </style>
 </head>
 <body>
@@ -549,11 +442,9 @@ blockquote {
     </div>
 </div>
 
-<!-- Event Handler & CAPI -->
 <?php if (!empty($pix['pixel_id']) && $is_published): ?>
 <script>
 (function() {
-    // Ambil fbp dari cookie
     function getCookie(name) {
         const value = `; ${document.cookie}`;
         const parts = value.split(`; ${name}=`);
@@ -566,25 +457,19 @@ blockquote {
     const fbp = getCookie('_fbp') || '';
     const userAgent = navigator.userAgent;
 
-    // Kirim ke CAPI via Beacon (non-blocking)
     const payload = {
         page_slug: '<?= addslashes($p['slug']) ?>',
         event: '<?= addslashes($meta_event_name) ?>',
         fbp: fbp,
         fbc: fbc,
         user_agent: userAgent
-        // IP diisi di sisi server
     };
 
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     if (navigator.sendBeacon) {
         navigator.sendBeacon('actions/pageview.php', blob);
     } else {
-        fetch('actions/pageview.php', {
-            method: 'POST',
-            body: blob,
-            keepalive: true
-        }).catch(() => {});
+        fetch('actions/pageview.php', { method: 'POST', body: blob, keepalive: true }).catch(() => {});
     }
 })();
 </script>
@@ -627,7 +512,6 @@ document.getElementById('landingForm')?.addEventListener('submit', function(e) {
 </script>
 <?php endif; ?>
 	
-<!-- ✅ FAQ Toggle Script (Hanya sekali) -->
 <?php if ($has_faq): ?>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
