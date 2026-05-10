@@ -13,7 +13,8 @@ $stmt = $pdo->prepare("
         lp.*, 
         pp.pixel_id AS actual_pixel_id, 
         pp.capi_endpoint AS actual_capi_endpoint, 
-        pp.capi_token AS actual_capi_token 
+        pp.capi_token AS actual_capi_token,
+        pp.clarity_project_id AS actual_clarity_id 
     FROM landing_pages lp 
     LEFT JOIN pixel_profiles pp ON lp.pixel_profile_id = pp.id 
     WHERE lp.slug = ? LIMIT 1
@@ -34,6 +35,7 @@ $pix = [
     'pixel_id' => trim($p['actual_pixel_id'] ?: ($p['meta_pixel_id'] ?? '')),
     'capi_endpoint' => trim($p['actual_capi_endpoint'] ?: ($p['capi_endpoint'] ?? '')),
     'capi_access_token' => trim($p['actual_capi_token'] ?: ($p['capi_access_token'] ?? ''))
+    'clarity_id' => trim($p['actual_clarity_id'] ?? '') // Tangkap ID Clarity
 ];
 
 // Fallback jika menyimpan JSON di kolom lama (Opsional, untuk backward compatibility)
@@ -356,14 +358,6 @@ if (!empty($p['is_pure_html'])) {
 </script>
 <noscript><img height='1' width='1' style='display:none' src='https://www.facebook.com/tr?id=<?= htmlspecialchars($pix['pixel_id']) ?>&ev=<?= urlencode($meta_event_name) ?>&noscript=1'/></noscript>
 <?php endif; ?>
-
-<script type="text/javascript">
-    (function(c,l,a,r,i,t,y){
-        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-    })(window, document, "clarity", "script", "u9ebbwavns");
-</script>
 	
 <style>
 body{font-family:'Nunito',sans-serif;background:#F2F5FA;margin:0;padding:0;line-height:1.5}
@@ -538,5 +532,26 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <?php endif; ?>	
+
+<?php if (!empty($pix['clarity_id']) && $is_published): ?>
+<script>
+    // Delay load script Clarity selama 2 detik agar tidak blokir proses render awal
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            (function(c,l,a,r,i,t,y){
+                c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+                t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+                y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+            })(window, document, "clarity", "script", "<?= htmlspecialchars($pix['clarity_id']) ?>");
+            
+            // Injeksi Custom Tags (Memudahkan filter video heatmap di dashboard Clarity)
+            if (typeof clarity === 'function') {
+                clarity("set", "PageName", "<?= addslashes($p['title']) ?>");
+                clarity("set", "PageSlug", "<?= addslashes($p['slug']) ?>");
+            }
+        }, 2000); 
+    });
+</script>
+<?php endif; ?>
 </body>
 </html>

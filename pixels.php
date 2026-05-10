@@ -115,30 +115,48 @@ $pixels = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <input type="hidden" name="pixel_id_internal" id="pixel_id_internal" value="0">
             <div class="flex justify-between items-center p-6 border-b border-slate-100">
                 <h2 class="text-[20px] font-bold text-slate-900 flex items-center gap-2">
-                    <span class="material-symbols-outlined text-blue-600">settings_heart</span> <span id="modalTitle">Tambah Pixel Baru</span>
+                    <span class="material-symbols-outlined text-blue-600">settings_heart</span> <span id="modalTitle">Tambah Profil Tracking</span>
                 </h2>
                 <button type="button" onclick="closeModal('pixelModal')" class="text-slate-400 hover:text-slate-900 p-1 rounded-full hover:bg-slate-100 transition-colors">
                     <span class="material-symbols-outlined text-[24px]">close</span>
                 </button>
             </div>
-            <div class="p-6 space-y-4">
+            <div class="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
                 <div>
-                    <label class="block text-[13px] font-bold text-slate-700 mb-1 uppercase tracking-wider">Nama Identitas Pixel</label>
-                    <input type="text" name="name" id="px_name" placeholder="Contoh: Pixel Produk Gamis" required class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all">
+                    <label class="block text-[13px] font-bold text-slate-700 mb-1 uppercase tracking-wider">Nama Identitas Tracking</label>
+                    <input type="text" name="name" id="px_name" placeholder="Contoh: Tracking Bisnis Kopi" required class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all">
                 </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="col-span-2">
-                        <label class="block text-[13px] font-bold text-slate-700 mb-1 uppercase tracking-wider">Meta Pixel ID</label>
-                        <input type="text" name="pixel_id" id="px_val" placeholder="1234567890..." required class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all">
+                
+                <div class="border-t border-slate-100 pt-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="material-symbols-outlined text-[18px] text-blue-600">analytics</span>
+                        <h3 class="text-[14px] font-bold text-slate-800">Pengaturan Meta Pixel</h3>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-[13px] font-bold text-slate-700 mb-1 uppercase tracking-wider">Meta Pixel ID</label>
+                            <input type="text" name="pixel_id" id="px_val" placeholder="1234567890..." required class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all">
+                        </div>
+                        <div>
+                            <label class="block text-[13px] font-bold text-slate-700 mb-1 uppercase tracking-wider">CAPI Access Token</label>
+                            <textarea name="capi_token" id="px_token" rows="2" placeholder="EAAB..." class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono text-xs"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-[13px] font-bold text-slate-700 mb-1 uppercase tracking-wider">CAPI Endpoint (Opsional)</label>
+                            <input type="text" name="capi_endpoint" id="px_endpoint" placeholder="https://graph.facebook.com/..." class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all">
+                        </div>
                     </div>
                 </div>
-                <div>
-                    <label class="block text-[13px] font-bold text-slate-700 mb-1 uppercase tracking-wider">CAPI Access Token</label>
-                    <textarea name="capi_token" id="px_token" rows="3" placeholder="EAAB..." class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono text-xs"></textarea>
-                </div>
-                <div>
-                    <label class="block text-[13px] font-bold text-slate-700 mb-1 uppercase tracking-wider">CAPI Endpoint (Proxy/Custom)</label>
-                    <input type="text" name="capi_endpoint" id="px_endpoint" placeholder="https://graph.facebook.com/..." class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all">
+
+                <div class="border-t border-slate-100 pt-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="material-symbols-outlined text-[18px] text-orange-500">local_fire_department</span>
+                        <h3 class="text-[14px] font-bold text-slate-800">Microsoft Clarity (Heatmap)</h3>
+                    </div>
+                    <div>
+                        <label class="block text-[13px] font-bold text-slate-700 mb-1 uppercase tracking-wider">Clarity Project ID</label>
+                        <input type="text" name="clarity_project_id" id="px_clarity" placeholder="Contoh: u9ebbwavns" class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono">
+                    </div>
                 </div>
             </div>
             <div class="px-6 py-5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
@@ -165,12 +183,13 @@ $pixels = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     function editPixel(data) {
         openModal('pixelModal');
-        document.getElementById('modalTitle').innerText = "Edit Konfigurasi Pixel";
+        document.getElementById('modalTitle').innerText = "Edit Profil Tracking";
         document.getElementById('pixel_id_internal').value = data.id;
         document.getElementById('px_name').value = data.name;
         document.getElementById('px_val').value = data.pixel_id;
         document.getElementById('px_token').value = data.capi_token;
         document.getElementById('px_endpoint').value = data.capi_endpoint;
+        document.getElementById('px_clarity').value = data.clarity_project_id || ''; // Load ID Clarity
     }
 </script>
 </body>
