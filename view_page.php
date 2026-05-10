@@ -34,7 +34,7 @@ $meta_event_name = trim($p['meta_event_name'] ?? 'ViewContent');
 $pix = [
     'pixel_id' => trim($p['actual_pixel_id'] ?: ($p['meta_pixel_id'] ?? '')),
     'capi_endpoint' => trim($p['actual_capi_endpoint'] ?: ($p['capi_endpoint'] ?? '')),
-    'capi_access_token' => trim($p['actual_capi_token'] ?: ($p['capi_access_token'] ?? ''))
+    'capi_access_token' => trim($p['actual_capi_token'] ?: ($p['capi_access_token'] ?? '')),
     'clarity_id' => trim($p['actual_clarity_id'] ?? '') // Tangkap ID Clarity
 ];
 
