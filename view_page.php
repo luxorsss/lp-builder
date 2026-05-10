@@ -1,7 +1,7 @@
 <?php
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+set_error_handler(function($errno, $errstr, $errfile, $errline) {
+    error_log("ERROR [$errno]: $errstr in $errfile on line $errline");
+});
 
 require_once 'includes/config.php';
 
@@ -12,18 +12,35 @@ if (empty($slug)) {
 }
 
 // Ambil data halaman DAN data pixel yang terhubung
-$stmt = $pdo->prepare("
-    SELECT 
-        lp.*, 
-        pp.pixel_id AS actual_pixel_id, 
-        pp.capi_endpoint AS actual_capi_endpoint, 
-        pp.capi_token AS actual_capi_token,
-        pp.clarity_project_id AS actual_clarity_id 
-    FROM landing_pages lp 
-    LEFT JOIN pixel_profiles pp ON lp.pixel_profile_id = pp.id 
-    WHERE lp.slug = ? LIMIT 1
-");
-$stmt->execute([$slug]);
+// $stmt = $pdo->prepare("
+//     SELECT 
+//         lp.*, 
+//         pp.pixel_id AS actual_pixel_id, 
+//         pp.capi_endpoint AS actual_capi_endpoint, 
+//         pp.capi_token AS actual_capi_token,
+//         pp.clarity_project_id AS actual_clarity_id 
+//     FROM landing_pages lp 
+//     LEFT JOIN pixel_profiles pp ON lp.pixel_profile_id = pp.id 
+//     WHERE lp.slug = ? LIMIT 1
+// ");
+// $stmt->execute([$slug]);
+
+try {
+    $stmt = $pdo->prepare("
+        SELECT 
+            lp.*, 
+            pp.pixel_id AS actual_pixel_id, 
+            pp.capi_endpoint AS actual_capi_endpoint, 
+            pp.capi_token AS actual_capi_token,
+            pp.clarity_project_id AS actual_clarity_id 
+        FROM landing_pages lp 
+        LEFT JOIN pixel_profiles pp ON lp.pixel_profile_id = pp.id 
+        WHERE lp.slug = ? LIMIT 1
+    ");
+    $stmt->execute([$slug]);
+} catch (PDOException $e) {
+    die("DB Error: " . $e->getMessage()); // Sementara untuk debug
+}
 $p = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$p) {
