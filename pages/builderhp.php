@@ -23,6 +23,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_element'])) {
     }
 }
 
+// AMBIL DAFTAR PROFIL PIXEL (Sistem Baru)
+$stmt = $pdo->prepare("SELECT id, name FROM pixel_profiles WHERE user_id = ? ORDER BY name ASC");
+$stmt->execute([$user['id']]);
+$pixels_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 // AMBIL DATA HALAMAN
 $page = null;
 $elements = [];
@@ -472,7 +477,7 @@ function renderElementUI($type, $idx, $content, $st) {
             display: block;
         }
 
-        .form-control {
+        .form-control, .form-select {
             width: 100%;
             padding: 14px;
             border: 2px solid var(--gray-light);
@@ -483,7 +488,7 @@ function renderElementUI($type, $idx, $content, $st) {
             min-height: 48px; /* Bigger for touch */
         }
 
-        .form-control:focus {
+        .form-control:focus, .form-select:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
             outline: none;
@@ -957,11 +962,16 @@ function renderElementUI($type, $idx, $content, $st) {
 </head>
 <body>
 
-<!-- Header -->
 <div class="app-header">
-    <div class="page-title">
-        <i class="fas fa-edit"></i>
-        <span id="pageTitle"><?= htmlspecialchars($page['title'] ?? 'Halaman Baru') ?></span>
+    <div class="d-flex align-items-center gap-3">
+        <a href="../index.php" class="text-secondary text-decoration-none d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; border-radius: 8px; background: var(--light);">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+        
+        <div class="page-title mb-0">
+            <i class="fas fa-edit"></i>
+            <span id="pageTitle"><?= htmlspecialchars($page['title'] ?? 'Halaman Baru') ?></span>
+        </div>
     </div>
     
     <div class="header-actions">
@@ -980,10 +990,8 @@ function renderElementUI($type, $idx, $content, $st) {
     </div>
 </div>
 
-<!-- Main Content -->
 <div class="main-content">
     
-    <!-- Tabs -->
     <div class="tabs-container">
         <button class="tab active" data-tab="content">
             <i class="fas fa-th-large"></i>
@@ -999,9 +1007,7 @@ function renderElementUI($type, $idx, $content, $st) {
         </button>
     </div>
 
-    <!-- Tab Content -->
     <div class="tab-content">
-        <!-- Content Tab -->
         <div class="tab-pane active" id="content-tab">
             <div class="content-area">
                 <div id="canvasElements">
@@ -1023,7 +1029,6 @@ function renderElementUI($type, $idx, $content, $st) {
             </div>
         </div>
         
-        <!-- Settings Tab -->
         <div class="tab-pane" id="settings-tab">
             <div class="settings-tab">
                 <h5 class="section-title">
@@ -1050,59 +1055,55 @@ function renderElementUI($type, $idx, $content, $st) {
             </div>
         </div>
         
-        <!-- Tracking Tab -->
         <div class="tab-pane" id="tracking-tab">
             <div class="settings-tab">
                 <h5 class="section-title">
-                    <i class="fab fa-facebook"></i> Meta Pixel
+                    <i class="fas fa-satellite-dish"></i> Pengaturan Tracking
                 </h5>
                 
+                <div class="alert alert-info py-2 px-3 mb-3" style="font-size: 13px; background-color:#e0f2fe; border-color:#bae6fd; color:#0369a1; border-radius: 8px;">
+                    <i class="fas fa-info-circle me-1"></i> Pilih profil tracking yang sudah Anda buat di menu Pengaturan Pixel.
+                </div>
+
                 <div class="form-group">
-                    <label class="form-label">Pixel ID</label>
-                    <input type="text" id="pixelIdInput" class="form-control" 
-                           value="<?= htmlspecialchars($page['meta_pixel_id'] ?? '') ?>" 
-                           placeholder="123456789012345">
+                    <label class="form-label">Profil Pixel & Clarity</label>
+                    <div class="position-relative">
+                        <select id="pixelProfileInput" class="form-select cursor-pointer">
+                            <option value="">-- Tanpa Pixel --</option>
+                            <?php foreach ($pixels_list as $px): ?>
+                                <option value="<?= $px['id'] ?>" <?= (($page['pixel_profile_id'] ?? '') == $px['id']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($px['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Nama Event</label>
-                    <input type="text" id="eventNameInput" class="form-control" 
-                           value="<?= htmlspecialchars($page['meta_event_name'] ?? 'ViewContent') ?>"
-                           placeholder="ViewContent">
+                    <label class="form-label">Picu Event Target</label>
+                    <div class="position-relative">
+                        <select id="eventNameInput" class="form-select cursor-pointer">
+                            <?php 
+                            $evs = ['ViewContent', 'Lead', 'Purchase', 'AddToCart', 'InitiateCheckout', 'CompleteRegistration'];
+                            $selected_event = $page['meta_event_name'] ?? 'ViewContent';
+                            foreach($evs as $e): ?>
+                                <option value="<?= $e ?>" <?= ($selected_event == $e) ? 'selected' : '' ?>><?= $e ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
                 </div>
-                
-                <hr class="my-4">
-                
-                <h5 class="section-title">
-                    <i class="fas fa-code"></i> Conversions API
-                </h5>
-                
-                <div class="form-group">
-                    <label class="form-label">Access Token</label>
-                    <input type="text" id="capiTokenInput" class="form-control" 
-                           value="<?= htmlspecialchars($page['capi_access_token'] ?? '') ?>"
-                           placeholder="EAA...">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Endpoint URL</label>
-                    <input type="text" id="capiEndpointInput" class="form-control" 
-                           value="<?= htmlspecialchars($page['capi_endpoint'] ?? '') ?>"
-                           placeholder="https://graph.facebook.com/...">
-                </div>
+
             </div>
         </div>
     </div>
 </div>
 
-<!-- Add Element FAB -->
 <div class="fab-container">
     <button class="fab-btn" onclick="showElementModal()">
         <i class="fas fa-plus"></i>
     </button>
 </div>
 
-<!-- Element Modal - Hidden by default -->
 <div class="modal-overlay" id="elementModalOverlay"></div>
 <div class="element-modal" id="elementModal">
     <div class="modal-header">
@@ -1134,7 +1135,6 @@ function renderElementUI($type, $idx, $content, $st) {
     </div>
 </div>
 
-<!-- Save Button -->
 <div class="save-container">
     <button type="button" class="save-btn" onclick="savePage()" id="saveBtn">
         <i class="fas fa-save"></i>
@@ -1142,7 +1142,6 @@ function renderElementUI($type, $idx, $content, $st) {
     </button>
 </div>
 
-<!-- Notification -->
 <div id="notification" class="notification d-none"></div>
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -1164,17 +1163,6 @@ const fullColorPalette = [
     "#6b24b2", "#444444", "#5c0000", "#663d00", "#666600", "#003700", "#002966", 
     "#3d1466"
 ];
-
-// Element Data
-const elementData = {
-    'paragraph': {icon: 'fas fa-font', color: '#3b82f6', name: 'Teks'},
-    'button': {icon: 'fas fa-square', color: '#10b981', name: 'Tombol'},
-    'image': {icon: 'fas fa-image', color: '#f59e0b', name: 'Gambar'},
-    'youtube': {icon: 'fab fa-youtube', color: '#ef4444', name: 'Video'},
-    'divider': {icon: 'fas fa-minus', color: '#6b7280', name: 'Pembatas'},
-    'faq': {icon: 'fas fa-question-circle', color: '#8b5cf6', name: 'FAQ'},
-    'html': {icon: 'fas fa-code', color: '#ec4899', name: 'HTML'}
-};
 
 // Tab Switching
 document.querySelectorAll('.tab').forEach(btn => {
@@ -1685,10 +1673,8 @@ async function savePage() {
         const settings = {
             title: titleInput.value,
             slug: document.getElementById('pageSlugInput').value,
-            pixel_id: document.getElementById('pixelIdInput').value,
-            event_name: document.getElementById('eventNameInput').value,
-            capi_token: document.getElementById('capiTokenInput').value,
-            capi_endpoint: document.getElementById('capiEndpointInput').value
+            pixel_profile_id: document.getElementById('pixelProfileInput').value,
+            event_name: document.getElementById('eventNameInput').value
         };
         
         // Collect elements data

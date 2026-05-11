@@ -1,1 +1,0 @@
-<?php echo "PHP OK - " . phpversion();

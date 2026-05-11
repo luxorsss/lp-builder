@@ -5,8 +5,8 @@ require_once '../includes/auth.php';
 
 header('Content-Type: application/json');
 
-// Pastikan user login (sesuaikan dengan fungsi auth kamu)
-// if (!isLoggedIn()) { ... } 
+requireLogin();
+$user = getCurrentUser($pdo);
 
 // Ambil input JSON
 $input = json_decode(file_get_contents('php://input'), true);
@@ -22,28 +22,26 @@ if (!$page_id) {
 try {
     $pdo->beginTransaction();
 
-    // 1. UPDATE DATA HALAMAN (Judul, Slug, Tracking, Status)
+    // 1. UPDATE DATA HALAMAN (Sistem Pixel Baru)
     if (!empty($settings)) {
+        $pixel_profile_id = !empty($settings['pixel_profile_id']) ? (int)$settings['pixel_profile_id'] : null;
+
         $stmtPage = $pdo->prepare("
             UPDATE landing_pages 
             SET title = ?, 
                 slug = ?, 
-                meta_pixel_id = ?, 
-                meta_event_name = ?, 
-                capi_access_token = ?, 
-                capi_endpoint = ?,
-                status = 'published'
-            WHERE id = ?
+                pixel_profile_id = ?, 
+                meta_event_name = ?
+            WHERE id = ? AND user_id = ?
         ");
         
         $stmtPage->execute([
             $settings['title'],
             $settings['slug'],
-            $settings['pixel_id'],
+            $pixel_profile_id,
             $settings['event_name'],
-            $settings['capi_token'],
-            $settings['capi_endpoint'],
-            $page_id
+            $page_id,
+            $user['id']
         ]);
     }
 

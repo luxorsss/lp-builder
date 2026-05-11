@@ -216,7 +216,6 @@ function generateFullHTML($page, $elements) {
     // Meta Pixel
     if (!empty($pix['pixel_id']) && $is_published) {
         $html .= '
-<!-- Meta Pixel -->
 <script>
 setTimeout(function() {
     !function(f,b,e,v,n,t,s)
@@ -540,391 +539,160 @@ if (isset($_GET['preview'])) {
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Export HTML - <?= htmlspecialchars($page['title']) ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700" rel="stylesheet"/>
     <style>
-        body {
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
         
-        .export-container {
-            max-width: 1000px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            padding: 40px;
-        }
-        
-        .header-section {
-            background: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 100%);
-            color: white;
-            border-radius: 15px;
-            padding: 30px;
-            margin-bottom: 30px;
-        }
-        
-        .option-card {
-            border: 2px solid #e2e8f0;
-            border-radius: 15px;
-            padding: 30px;
-            text-align: center;
-            transition: all 0.3s;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }
-        
-        .option-card:hover {
-            transform: translateY(-5px);
-            border-color: #6d28d9;
-            box-shadow: 0 10px 25px rgba(109, 40, 217, 0.1);
-        }
-        
-        .option-icon {
-            font-size: 3rem;
-            color: #6d28d9;
-            margin-bottom: 20px;
-        }
-        
-        .btn-export {
-            background: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 100%);
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 10px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        
-        .btn-export:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(109, 40, 217, 0.3);
-            color: white;
-        }
-        
-        .btn-outline-export {
-            border: 2px solid #6d28d9;
-            color: #6d28d9;
-            padding: 12px 30px;
-            border-radius: 10px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        
-        .btn-outline-export:hover {
-            background: #6d28d9;
-            color: white;
-        }
-        
-        .code-preview {
-            background: #1e293b;
-            color: #e2e8f0;
-            border-radius: 10px;
-            padding: 20px;
-            max-height: 300px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9rem;
-        }
-        
-        .step-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 15px;
-            padding: 15px;
-            background: #f8fafc;
-            border-radius: 10px;
-        }
-        
-        .step-number {
-            background: #6d28d9;
-            color: white;
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 15px;
-            font-weight: bold;
-        }
-        
-        .success-alert {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 9999;
-            min-width: 300px;
-            animation: slideIn 0.3s ease;
-        }
-        
+        /* Animasi Custom Alert */
         @keyframes slideIn {
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
-        
-        .html-output {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 5px;
-            padding: 15px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        
-        .fbclid-info {
-            background: #e7f3ff;
-            border-left: 4px solid #1877f2;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
+        .slide-in { animation: slideIn 0.3s ease forwards; }
     </style>
 </head>
-<body>
-    <div id="successAlert" class="success-alert alert alert-success alert-dismissible fade show d-none" role="alert">
-        <span id="alertMessage"></span>
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+<body class="bg-slate-50 min-h-screen pb-20">
+
+    <div class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="builder.php?id=<?= $page_id ?>" class="text-slate-500 hover:bg-slate-100 p-2 rounded-full transition-colors flex items-center" title="Kembali">
+                    <span class="material-symbols-outlined">arrow_back</span>
+                </a>
+                <h1 class="text-[18px] font-bold text-slate-900">Export HTML</h1>
+            </div>
+        </div>
     </div>
-    
-    <div class="export-container">
-        <div class="header-section">
-            <h1 class="mb-3"><i class="fas fa-file-export me-2"></i>Export HTML</h1>
-            <h3 class="mb-0"><?= htmlspecialchars($page['title']) ?></h3>
-            <p class="mb-0 mt-2 opacity-75">Generate complete HTML file matching preview.php style</p>
-        </div>
+
+    <div id="alertContainer" class="fixed top-20 right-6 z-50 flex flex-col gap-2"></div>
+
+    <div class="max-w-5xl mx-auto px-6 mt-8">
         
-        <div class="fbclid-info">
-            <h5><i class="fab fa-facebook me-2"></i>Facebook Click ID (fbclid) Support</h5>
-            <p class="mb-0">HTML yang di-generate sudah termasuk fitur otomatis untuk:</p>
-            <ul class="mb-0">
-                <li>Menangkap parameter <code>?fbclid=...</code> dari URL</li>
-                <li>Menambahkan fbclid ke semua link button secara otomatis</li>
-                <li>Menyimpan fbclid di cookie untuk tracking CAPI</li>
-                <li>Mengirim fbclid ke Meta Pixel dan Conversions API</li>
-            </ul>
-        </div>
-        
-        <div class="row mb-5">
-            <div class="col-md-6 mb-4">
-                <div class="option-card">
-                    <div>
-                        <div class="option-icon">
-                            <i class="fas fa-download"></i>
-                        </div>
-                        <h4>Download HTML File</h4>
-                        <p class="text-muted">Download complete HTML file ready to deploy</p>
-                    </div>
-                    <div class="mt-4">
-                        <a href="export_html.php?id=<?= $page_id ?>&download=1" class="btn btn-export w-100">
-                            <i class="fas fa-download me-2"></i>Download HTML File
-                        </a>
-                    </div>
+        <div class="bg-gradient-to-r from-blue-700 to-blue-500 rounded-2xl p-8 text-white shadow-md shadow-blue-600/20 mb-8 relative overflow-hidden">
+            <div class="relative z-10">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="material-symbols-outlined text-[32px] opacity-90">html</span>
+                    <h2 class="text-[28px] font-bold"><?= htmlspecialchars($page['title']) ?></h2>
                 </div>
+                <p class="text-blue-100 max-w-xl">Generate *file* HTML murni yang siap di-*deploy* ke server mana pun, lengkap dengan sistem *tracking* yang utuh.</p>
             </div>
-            
-            <div class="col-md-6 mb-4">
-                <div class="option-card">
-                    <div>
-                        <div class="option-icon">
-                            <i class="fas fa-code"></i>
-                        </div>
-                        <h4>Copy HTML Code</h4>
-                        <p class="text-muted">Copy HTML code to clipboard (full page)</p>
-                    </div>
-                    <div class="mt-4">
-                        <button onclick="copyFullHTML()" class="btn btn-outline-export w-100">
-                            <i class="fas fa-copy me-2"></i>Copy to Clipboard
-                        </button>
-                    </div>
-                </div>
+            <span class="material-symbols-outlined absolute -right-4 -bottom-10 text-[180px] text-white opacity-10 rotate-12 pointer-events-none">code_blocks</span>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-200 rounded-2xl p-6 mb-8 flex gap-4">
+            <span class="material-symbols-outlined text-blue-600 text-[28px] flex-shrink-0">data_alert</span>
+            <div>
+                <h3 class="font-bold text-blue-900 mb-1 text-[15px]">Facebook Click ID (fbclid) Terintegrasi</h3>
+                <p class="text-blue-800 text-[13px] leading-relaxed mb-2">Kode HTML yang di-*generate* sudah dilengkapi fitur pintar otomatis untuk:</p>
+                <ul class="text-blue-800 text-[13px] list-disc list-inside space-y-1 ml-1 opacity-90">
+                    <li>Menangkap parameter <code class="font-bold bg-blue-100 px-1 rounded">?fbclid=</code> dari URL iklan Meta Anda.</li>
+                    <li>Menyisipkan *fbclid* tersebut ke semua tautan (*link* tombol) secara otomatis.</li>
+                    <li>Menyimpan rekam jejak di *cookie* browser untuk pengiriman *Conversions API (CAPI)*.</li>
+                </ul>
             </div>
         </div>
-        
-        <div class="row">
-            <div class="col-md-6 mb-4">
-                <div class="option-card">
-                    <div>
-                        <div class="option-icon">
-                            <i class="fas fa-eye"></i>
-                        </div>
-                        <h4>Preview HTML</h4>
-                        <p class="text-muted">Preview generated HTML in browser</p>
-                    </div>
-                    <div class="mt-4">
-                        <a href="export_html.php?id=<?= $page_id ?>&preview=1" target="_blank" class="btn btn-outline-export w-100">
-                            <i class="fas fa-external-link-alt me-2"></i>Open Preview
-                        </a>
-                    </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all p-8 flex flex-col items-center text-center group">
+                <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <span class="material-symbols-outlined text-[32px]">download</span>
                 </div>
+                <h4 class="text-[18px] font-bold text-slate-900 mb-2">Download File HTML</h4>
+                <p class="text-[13px] text-slate-500 mb-6 flex-grow">Unduh *file* HTML utuh yang langsung siap diunggah ke *hosting* atau *cPanel* Anda.</p>
+                <a href="export_html.php?id=<?= $page_id ?>&download=1" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined text-[18px]">cloud_download</span> Download File
+                </a>
             </div>
-            
-            <div class="col-md-6 mb-4">
-                <div class="option-card">
-                    <div>
-                        <div class="option-icon">
-                            <i class="fas fa-arrow-left"></i>
-                        </div>
-                        <h4>Back to Builder</h4>
-                        <p class="text-muted">Return to page builder</p>
-                    </div>
-                    <div class="mt-4">
-                        <a href="builder.php?id=<?= $page_id ?>" class="btn btn-outline-export w-100">
-                            <i class="fas fa-edit me-2"></i>Edit Page
-                        </a>
-                    </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all p-8 flex flex-col items-center text-center group">
+                <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <span class="material-symbols-outlined text-[32px]">content_copy</span>
                 </div>
+                <h4 class="text-[18px] font-bold text-slate-900 mb-2">Salin Kode HTML</h4>
+                <p class="text-[13px] text-slate-500 mb-6 flex-grow">Salin seluruh kode HTML ke *clipboard* untuk di-*paste* ke *platform* lain.</p>
+                <button onclick="copyFullHTML()" class="w-full bg-white text-blue-600 border-2 border-blue-600 font-bold py-2.5 rounded-xl hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined text-[18px]">file_copy</span> Copy ke Clipboard
+                </button>
             </div>
         </div>
-        
-        <div class="mt-5">
-            <h4 class="mb-3"><i class="fas fa-file-code me-2"></i>HTML Preview (First 1000 characters)</h4>
-            <div class="html-output">
-                <?= htmlspecialchars(substr($full_html, 0, 1000)) . "\n\n... [truncated - full file: " . strlen($full_html) . " characters]" ?>
+
+        <div class="bg-slate-900 rounded-2xl shadow-lg overflow-hidden border border-slate-800">
+            <div class="bg-slate-800 px-6 py-4 flex items-center justify-between border-b border-slate-700">
+                <div class="flex items-center gap-2 text-slate-300">
+                    <span class="material-symbols-outlined text-[18px]">terminal</span>
+                    <h4 class="font-bold text-[14px]">Pratinjau Kode Sumber</h4>
+                </div>
+                <span class="text-xs font-mono text-slate-500 bg-slate-900 px-2 py-1 rounded"><?= number_format(strlen($full_html)) ?> characters</span>
             </div>
-            <div class="text-end mt-2">
-                <small class="text-muted">Total: <?= strlen($full_html) ?> characters</small>
+            <div class="p-6 overflow-y-auto max-h-[400px]">
+                <pre class="text-slate-300 font-mono text-[12px] whitespace-pre-wrap word-break-all leading-relaxed"><?= htmlspecialchars(substr($full_html, 0, 1500)) . "\n\n... [Kode dipotong - Panjang total: " . strlen($full_html) . " karakter]" ?></pre>
             </div>
         </div>
-        
-        <div class="mt-5">
-            <h4 class="mb-3"><i class="fas fa-list-ol me-2"></i>How to Use</h4>
-            <div class="step-item">
-                <div class="step-number">1</div>
-                <div>
-                    <strong>Download or copy the HTML code</strong>
-                    <p class="mb-0 small text-muted">Choose your preferred method above</p>
-                </div>
-            </div>
-            <div class="step-item">
-                <div class="step-number">2</div>
-                <div>
-                    <strong>Upload to your server</strong>
-                    <p class="mb-0 small text-muted">Upload the HTML file to your web hosting</p>
-                </div>
-            </div>
-            <div class="step-item">
-                <div class="step-number">3</div>
-                <div>
-                    <strong>Share link with fbclid</strong>
-                    <p class="mb-0 small text-muted">Share your page with Facebook ads using fbclid parameter</p>
-                </div>
-            </div>
-            <div class="step-item">
-                <div class="step-number">4</div>
-                <div>
-                    <strong>Test tracking</strong>
-                    <p class="mb-0 small text-muted">Visit your page with ?fbclid=test and check button links</p>
-                </div>
-            </div>
-        </div>
-        
-        <div class="mt-5">
-            <h4 class="mb-3"><i class="fas fa-info-circle me-2"></i>Features Included</h4>
-            <div class="row">
-                <div class="col-md-6">
-                    <ul class="list-group">
-                        <li class="list-group-item d-flex align-items-center">
-                            <i class="fas fa-check text-success me-2"></i>
-                            Meta Pixel Integration
-                        </li>
-                        <li class="list-group-item d-flex align-items-center">
-                            <i class="fas fa-check text-success me-2"></i>
-                            <strong>Facebook fbclid Support</strong>
-                        </li>
-                        <li class="list-group-item d-flex align-items-center">
-                            <i class="fas fa-check text-success me-2"></i>
-                            Microsoft Clarity Tracking
-                        </li>
-                        <li class="list-group-item d-flex align-items-center">
-                            <i class="fas fa-check text-success me-2"></i>
-                            Google Fonts (Nunito)
-                        </li>
-                    </ul>
-                </div>
-                <div class="col-md-6">
-                    <ul class="list-group">
-                        <li class="list-group-item d-flex align-items-center">
-                            <i class="fas fa-check text-success me-2"></i>
-                            Responsive Design
-                        </li>
-                        <li class="list-group-item d-flex align-items-center">
-                            <i class="fas fa-check text-success me-2"></i>
-                            Mobile Optimization
-                        </li>
-                        <li class="list-group-item d-flex align-items-center">
-                            <i class="fas fa-check text-success me-2"></i>
-                            SEO Meta Tags
-                        </li>
-                        <li class="list-group-item d-flex align-items-center">
-                            <i class="fas fa-check text-success me-2"></i>
-                            Interactive FAQ
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </div>
+
     </div>
     
     <script>
-    function showAlert(message, type = 'success') {
-        const alert = document.getElementById('successAlert');
-        const messageSpan = document.getElementById('alertMessage');
+    function showAlert(message, isSuccess = true) {
+        const container = document.getElementById('alertContainer');
+        const alertDiv = document.createElement('div');
         
-        alert.className = `success-alert alert alert-${type} alert-dismissible fade show`;
-        messageSpan.textContent = message;
-        alert.classList.remove('d-none');
+        const bgColor = isSuccess ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700';
+        const icon = isSuccess ? 'check_circle' : 'error';
         
-        // Auto hide after 5 seconds
+        alertDiv.className = `slide-in flex items-center gap-3 px-5 py-4 rounded-xl border shadow-lg ${bgColor}`;
+        alertDiv.innerHTML = `
+            <span class="material-symbols-outlined text-[20px]">${icon}</span>
+            <span class="text-[14px] font-medium">${message}</span>
+            <button class="ml-2 text-current opacity-70 hover:opacity-100" onclick="this.parentElement.remove()">
+                <span class="material-symbols-outlined text-[18px]">close</span>
+            </button>
+        `;
+        
+        container.appendChild(alertDiv);
+        
         setTimeout(() => {
-            alert.classList.add('d-none');
+            alertDiv.style.opacity = '0';
+            alertDiv.style.transform = 'translateX(100%)';
+            alertDiv.style.transition = 'all 0.3s ease';
+            setTimeout(() => alertDiv.remove(), 300);
         }, 5000);
     }
     
     function copyFullHTML() {
-        // AJAX request untuk mendapatkan full HTML
+        const copyBtn = event.currentTarget;
+        const originalText = copyBtn.innerHTML;
+        
+        copyBtn.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">refresh</span> Menyalin...';
+        copyBtn.disabled = true;
+
         fetch('export_html.php?id=<?= $page_id ?>&preview=1')
             .then(response => response.text())
             .then(html => {
-                // Copy ke clipboard
                 navigator.clipboard.writeText(html)
                     .then(() => {
-                        showAlert('✓ Complete HTML code copied to clipboard!', 'success');
+                        showAlert('Berhasil! Seluruh kode HTML telah disalin ke clipboard.');
                     })
                     .catch(err => {
                         console.error('Failed to copy: ', err);
-                        showAlert('✗ Failed to copy. Please try again.', 'danger');
+                        showAlert('Gagal menyalin kode. Silakan coba lagi.', false);
+                    })
+                    .finally(() => {
+                        copyBtn.innerHTML = originalText;
+                        copyBtn.disabled = false;
                     });
             })
             .catch(error => {
                 console.error('Error fetching HTML:', error);
-                showAlert('✗ Failed to fetch HTML code.', 'danger');
+                showAlert('Gagal memuat kode HTML.', false);
+                copyBtn.innerHTML = originalText;
+                copyBtn.disabled = false;
             });
     }
-    
-    // Event listener untuk close alert
-    document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('btn-close')) {
-            e.target.closest('.alert').classList.add('d-none');
-        }
-    });
-    
-    // Test fbclid functionality
-    function testFbclid() {
-        const testUrl = window.location.href.split('?')[0] + '?fbclid=test_123456789';
-        showAlert(`Test URL with fbclid: ${testUrl}`, 'info');
-    }
     </script>
-    
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
