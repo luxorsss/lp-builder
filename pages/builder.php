@@ -306,62 +306,76 @@ function renderElementUI($type, $idx, $content, $st)
     <main class="flex-1 bg-surface-dim flex flex-col h-full overflow-hidden relative">
         <form id="builderForm" action="builder.php<?= $page_id ? '?id='.$page_id : '' ?>" method="POST" class="flex flex-col h-full m-0">
             
-            <div class="bg-surface-container-lowest border-b border-outline-variant p-4 shrink-0 shadow-sm z-30">
-                <div class="flex flex-wrap gap-4 items-end mb-4">
-                    <div class="flex-1 min-w-[200px]">
-                        <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Judul Halaman</label>
-                        <input name="title" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary focus:ring-1 focus:ring-primary outline-none" type="text" value="<?= htmlspecialchars($page['title'] ?? '') ?>" required/>
+            <div class="bg-surface-container-lowest border-b border-outline-variant shrink-0 shadow-sm z-30">
+                
+                <div class="px-4 py-2.5 flex justify-between items-center cursor-pointer bg-surface-container-low hover:bg-surface-variant transition-colors border-b border-outline-variant/50" onclick="togglePageSettings()">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[18px] text-primary">tune</span>
+                        <span class="text-[13px] font-bold text-primary tracking-wide">Pengaturan Halaman & Tracking</span>
+                        <?php if($page_id > 0): ?>
+                            <span class="ml-2 text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium border border-primary/20"><?= htmlspecialchars($page['title'] ?? '') ?></span>
+                        <?php endif; ?>
                     </div>
-                    <div class="flex-1 min-w-[200px]">
-                        <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Slug URL</label>
-                        <input name="slug" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary focus:ring-1 focus:ring-primary outline-none" type="text" value="<?= htmlspecialchars($page['slug'] ?? '') ?>" required/>
-                    </div>
-                    <div class="w-48">
-                        <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Folder</label>
-                        <div class="relative">
-                            <select name="project_id" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary focus:ring-1 focus:ring-primary outline-none appearance-none cursor-pointer">
-                                <option value="">-- Tanpa Folder --</option>
-                                <?php foreach ($projects_list as $proj): ?>
-                                    <option value="<?= $proj['id'] ?>" <?= (($page['project_id'] ?? '') == $proj['id']) ? 'selected' : '' ?>><?= htmlspecialchars($proj['name']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">arrow_drop_down</span>
-                        </div>
-                    </div>
-                    <div class="flex flex-col justify-center h-10 ml-2">
-                        <label class="flex items-center gap-2 cursor-pointer group">
-                            <input class="w-4 h-4 text-error border-outline-variant rounded focus:ring-error" type="checkbox" id="isPureHtmlToggle" name="is_pure_html" value="1" <?= (!empty($page['is_pure_html'])) ? 'checked' : '' ?>/>
-                            <span class="text-[14px] font-semibold text-error group-hover:text-on-error-container transition-colors">Mode Pure HTML</span>
-                        </label>
-                    </div>
+                    <span class="material-symbols-outlined text-on-surface-variant transition-transform duration-300 <?= $page_id > 0 ? '' : 'rotate-180' ?>" id="settingChevron">expand_more</span>
                 </div>
 
-                <div class="flex flex-wrap gap-4 items-end pt-4 border-t border-outline-variant border-dashed">
-                    <div class="w-64">
-                        <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">analytics</span> Meta Pixel</label>
-                        <div class="relative">
-                            <select name="pixel_profile_id" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none appearance-none cursor-pointer">
-                                <option value="">-- Tanpa Pixel --</option>
-                                <?php foreach ($pixels_list as $px): ?>
-                                    <option value="<?= $px['id'] ?>" <?= (($page['pixel_profile_id'] ?? '') == $px['id']) ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($px['name']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                            <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+                <div id="pageSettingsPanel" class="p-4 <?= $page_id > 0 ? 'hidden' : '' ?>">
+                    <div class="flex flex-wrap gap-4 items-end mb-4">
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Judul Halaman</label>
+                            <input name="title" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary focus:ring-1 focus:ring-primary outline-none" type="text" value="<?= htmlspecialchars($page['title'] ?? '') ?>" required/>
+                        </div>
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Slug URL</label>
+                            <input name="slug" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary focus:ring-1 focus:ring-primary outline-none" type="text" value="<?= htmlspecialchars($page['slug'] ?? '') ?>" required/>
+                        </div>
+                        <div class="w-48">
+                            <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Folder</label>
+                            <div class="relative">
+                                <select name="project_id" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary focus:ring-1 focus:ring-primary outline-none appearance-none cursor-pointer">
+                                    <option value="">-- Tanpa Folder --</option>
+                                    <?php foreach ($projects_list as $proj): ?>
+                                        <option value="<?= $proj['id'] ?>" <?= (($page['project_id'] ?? '') == $proj['id']) ? 'selected' : '' ?>><?= htmlspecialchars($proj['name']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">arrow_drop_down</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-col justify-center h-10 ml-2">
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input class="w-4 h-4 text-error border-outline-variant rounded focus:ring-error" type="checkbox" id="isPureHtmlToggle" name="is_pure_html" value="1" <?= (!empty($page['is_pure_html'])) ? 'checked' : '' ?>/>
+                                <span class="text-[14px] font-semibold text-error group-hover:text-on-error-container transition-colors">Mode Pure HTML</span>
+                            </label>
                         </div>
                     </div>
-                    <div class="w-64">
-                        <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">bolt</span> Event Trigger</label>
-                        <div class="relative">
-                            <select name="meta_event_name" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none appearance-none cursor-pointer">
-                                <?php 
-                                $evs = ['ViewContent', 'Lead', 'Purchase', 'AddToCart', 'InitiateCheckout', 'CompleteRegistration'];
-                                foreach($evs as $e): ?>
-                                    <option value="<?= $e ?>" <?= (($page['meta_event_name'] ?? 'ViewContent') == $e) ? 'selected' : '' ?>><?= $e ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+
+                    <div class="flex flex-wrap gap-4 items-end pt-4 border-t border-outline-variant border-dashed">
+                        <div class="w-64">
+                            <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">analytics</span> Meta Pixel & Clarity</label>
+                            <div class="relative">
+                                <select name="pixel_profile_id" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none appearance-none cursor-pointer">
+                                    <option value="">-- Tanpa Tracking --</option>
+                                    <?php foreach ($pixels_list as $px): ?>
+                                        <option value="<?= $px['id'] ?>" <?= (($page['pixel_profile_id'] ?? '') == $px['id']) ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($px['name']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+                            </div>
+                        </div>
+                        <div class="w-64">
+                            <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">bolt</span> Event Trigger</label>
+                            <div class="relative">
+                                <select name="meta_event_name" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none appearance-none cursor-pointer">
+                                    <?php 
+                                    $evs = ['ViewContent', 'Lead', 'Purchase', 'AddToCart', 'InitiateCheckout', 'CompleteRegistration'];
+                                    foreach($evs as $e): ?>
+                                        <option value="<?= $e ?>" <?= (($page['meta_event_name'] ?? 'ViewContent') == $e) ? 'selected' : '' ?>><?= $e ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -669,8 +683,27 @@ function renderSettings(type, idx) {
                     <input type="text" id="sBtnText" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none" value="${content || 'Klik Disini'}">
                 </div>
                 <div>
-                    <label class="block text-[13px] font-medium text-on-surface mb-1">Link URL</label>
+                    <label class="block text-[13px] font-medium text-on-surface mb-1">Link URL Tujuan</label>
                     <input type="text" id="sBtnLink" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none" value="${link || '#'}">
+                </div>
+                
+                <div class="mt-4 p-4 bg-[#e0f2fe] border border-[#bae6fd] rounded-xl shadow-sm">
+                    <h5 class="text-[13px] font-bold text-[#0369a1] mb-3 flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[18px]">forum</span> Generator Link WA
+                    </h5>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-[12px] font-medium text-[#0369a1] mb-1">Nomor WA (Mulai dengan 62)</label>
+                            <input type="text" id="waPhone" class="w-full border-none ring-1 ring-black/5 rounded-lg px-3 py-2 text-[13px]" placeholder="628123456789">
+                        </div>
+                        <div>
+                            <label class="block text-[12px] font-medium text-[#0369a1] mb-1">Pesan Otomatis</label>
+                            <textarea id="waText" rows="2" class="w-full border-none ring-1 ring-black/5 rounded-lg px-3 py-2 text-[13px]" placeholder="Halo kak, saya mau order produk..."></textarea>
+                        </div>
+                        <button type="button" onclick="generateWaLink()" class="w-full py-2 bg-[#0284c7] text-white text-[13px] font-bold rounded-lg hover:bg-[#0369a1] transition-colors flex items-center justify-center gap-2">
+                            <span class="material-symbols-outlined text-[16px]">bolt</span> Pasang ke Tombol
+                        </button>
+                    </div>
                 </div>`;
     }
     else if(type === 'faq') {
@@ -886,6 +919,12 @@ function updateIndices() {
     });
 }
 
+// Tambahkan ini di dalam tag <script> paling bawah
+function togglePageSettings() {
+    $('#pageSettingsPanel').slideToggle(250);
+    $('#settingChevron').toggleClass('rotate-180');
+}
+
 $(document).ready(function() {
     $('#isPureHtmlToggle').change(function() {
         if($(this).is(':checked')) {
@@ -902,6 +941,29 @@ $(document).ready(function() {
     });
     $('#isPureHtmlToggle').trigger('change');
 });
+
+window.generateWaLink = function() {
+    let phone = $('#waPhone').val().replace(/\D/g,''); // Buang karakter selain angka
+    if(phone.startsWith('0')) phone = '62' + phone.substring(1); // Ubah 0 jadi 62
+    
+    if(!phone) {
+        alert('Masukkan nomor WhatsApp terlebih dahulu!');
+        $('#waPhone').focus();
+        return;
+    }
+    
+    let text = encodeURIComponent($('#waText').val());
+    let waLink = `https://api.whatsapp.com/send?phone=${phone}&text=${text}`;
+    
+    // Masukkan ke input Link dan picu event input agar tersimpan ke elemen
+    $('#sBtnLink').val(waLink).trigger('input');
+    
+    // Ubah warna tombol jadi hijau WA otomatis (opsional)
+    $('#sBg').val('#25D366').trigger('input');
+    $('#sTx').val('#ffffff').trigger('input');
+    
+    alert('Link WhatsApp berhasil dipasang ke tombol!');
+};
 </script>
 </body>
 </html>

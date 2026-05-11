@@ -1296,16 +1296,29 @@ function loadSettingsForm(idx) {
                 </div>
                 <div class="form-group">
                     <label class="form-label">Link Tujuan</label>
-                    <input type="text" class="form-control" value="${escapeHtml(link)}" 
+                    <input type="text" id="btnLink-${idx}" class="form-control" value="${escapeHtml(link)}" 
                            oninput="updateHiddenVal(${idx}, '.in-link', this.value)" 
                            placeholder="https://...">
                 </div>
+
+                <div class="form-group mt-4 p-3" style="background:#e0f2fe; border:1px solid #bae6fd; border-radius:12px;">
+                    <label class="form-label mb-3" style="color:#0369a1; display:flex; align-items:center; gap:6px;">
+                        <i class="fab fa-whatsapp" style="font-size:18px;"></i> Generator Link WA
+                    </label>
+                    <input type="text" id="waPhone-${idx}" class="form-control mb-2" placeholder="No WA (Cth: 62812...)" style="font-size:14px;">
+                    <textarea id="waText-${idx}" class="form-control mb-3" rows="2" placeholder="Pesan otomatis (Opsional)..." style="font-size:14px;"></textarea>
+                    <button type="button" class="btn w-100" style="background:#0284c7; color:white; font-size:14px; font-weight:bold; padding:12px; border-radius:8px;" 
+                            onclick="generateWaLinkHp(${idx})">
+                        <i class="fas fa-bolt me-1"></i> Pasang ke Tombol
+                    </button>
+                </div>
+
                 <div class="row">
                     <div class="col-6">
                         <div class="form-group">
                             <label class="form-label">Background</label>
                             <div class="color-picker">
-                                <input type="color" value="${bg}" oninput="updateHiddenVal(${idx}, '.in-bg', this.value)">
+                                <input type="color" id="bgCol-${idx}" value="${bg}" oninput="updateHiddenVal(${idx}, '.in-bg', this.value)">
                                 <input type="text" class="form-control" value="${bg}" 
                                        oninput="updateHiddenVal(${idx}, '.in-bg', this.value)" style="flex:1;">
                             </div>
@@ -1315,7 +1328,7 @@ function loadSettingsForm(idx) {
                         <div class="form-group">
                             <label class="form-label">Warna Teks</label>
                             <div class="color-picker">
-                                <input type="color" value="${tx}" oninput="updateHiddenVal(${idx}, '.in-tx', this.value)">
+                                <input type="color" id="txCol-${idx}" value="${tx}" oninput="updateHiddenVal(${idx}, '.in-tx', this.value)">
                                 <input type="text" class="form-control" value="${tx}" 
                                        oninput="updateHiddenVal(${idx}, '.in-tx', this.value)" style="flex:1;">
                             </div>
@@ -1855,6 +1868,35 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+window.generateWaLinkHp = function(idx) {
+    let phoneInput = document.getElementById(`waPhone-${idx}`);
+    let phone = phoneInput.value.replace(/\D/g,'');
+    
+    if(phone.startsWith('0')) phone = '62' + phone.substring(1);
+    
+    if(!phone) { 
+        alert('Masukkan nomor WA terlebih dahulu!'); 
+        phoneInput.focus();
+        return; 
+    }
+    
+    let text = encodeURIComponent(document.getElementById(`waText-${idx}`).value);
+    let waLink = `https://api.whatsapp.com/send?phone=${phone}&text=${text}`;
+    
+    // Masukkan ke input link
+    let linkInput = document.getElementById(`btnLink-${idx}`);
+    linkInput.value = waLink;
+    updateHiddenVal(idx, '.in-link', waLink);
+    
+    // Otomatis ubah warna tombol jadi hijau WA (opsional)
+    document.getElementById(`bgCol-${idx}`).value = '#25D366';
+    updateHiddenVal(idx, '.in-bg', '#25D366');
+    document.getElementById(`txCol-${idx}`).value = '#ffffff';
+    updateHiddenVal(idx, '.in-tx', '#ffffff');
+    
+    alert('Sukses! Link WhatsApp telah dipasang.');
+};
 </script>
 </body>
 </html>
