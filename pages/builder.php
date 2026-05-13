@@ -27,6 +27,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $event_name = trim($_POST["meta_event_name"]);
     $project_id = !empty($_POST['project_id']) ? (int)$_POST['project_id'] : null;
     $pixel_profile_id = !empty($_POST['pixel_profile_id']) ? (int)$_POST['pixel_profile_id'] : null;
+    
+    // Tangkap data status dan jadwal baru
+    $status = $_POST["status"] ?? 'draft';
+    $next_scheduled_status = !empty($_POST["next_scheduled_status"]) ? $_POST["next_scheduled_status"] : null;
+    $next_schedule_time = !empty($_POST["next_schedule_time"]) ? date('Y-m-d H:i:s', strtotime($_POST["next_schedule_time"])) : null;
 
     // Tangkap data Pure HTML
     $is_pure_html = isset($_POST["is_pure_html"]) ? 1 : 0;
@@ -35,18 +40,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     try {
         $pdo->beginTransaction();
         if ($page_id > 0) {
+            // PERBAIKAN: Menambahkan status, next_schedule_time, dan next_scheduled_status ke query UPDATE
             $stmt = $pdo->prepare(
-                "UPDATE landing_pages SET project_id=?, pixel_profile_id=?, title=?, slug=?, meta_event_name=?, is_pure_html=?, pure_html_content=? WHERE id=? AND user_id=?",
+                "UPDATE landing_pages SET project_id=?, pixel_profile_id=?, title=?, slug=?, meta_event_name=?, status=?, next_schedule_time=?, next_scheduled_status=?, is_pure_html=?, pure_html_content=? WHERE id=? AND user_id=?"
             );
             $stmt->execute([
-                $project_id, $pixel_profile_id, $title, $slug, $event_name, $is_pure_html, $pure_html_content, $page_id, $user["id"],
+                $project_id, $pixel_profile_id, $title, $slug, $event_name, $status, $next_schedule_time, $next_scheduled_status, $is_pure_html, $pure_html_content, $page_id, $user["id"]
             ]);
         } else {
+            // PERBAIKAN: Menyesuaikan kolom INSERT dengan schema cron
             $stmt = $pdo->prepare(
-                "INSERT INTO landing_pages (user_id, project_id, pixel_profile_id, title, slug, meta_event_name, status, is_pure_html, pure_html_content) VALUES (?,?,?,?,?,?,'draft',?,?)",
+                "INSERT INTO landing_pages (user_id, project_id, pixel_profile_id, title, slug, meta_event_name, status, next_schedule_time, next_scheduled_status, is_pure_html, pure_html_content) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
             );
             $stmt->execute([
-                $user["id"], $project_id, $pixel_profile_id, $title, $slug, $event_name, $is_pure_html, $pure_html_content,
+                $user["id"], $project_id, $pixel_profile_id, $title, $slug, $event_name, $status, $next_schedule_time, $next_scheduled_status, $is_pure_html, $pure_html_content
             ]);
             $page_id = $pdo->lastInsertId();
         }
@@ -395,16 +402,23 @@ function renderElementUI($type, $idx, $content, $st)
 
                         <div class="flex-1 min-w-[200px]">
                             <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1">
-                                <span class="material-symbols-outlined text-[14px]">schedule</span> Waktu Mulai (Opsional)
+                                <span class="material-symbols-outlined text-[14px]">update</span> Aksi Jadwal Berikutnya
                             </label>
-                            <input name="schedule_start" type="datetime-local" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none text-slate-700" value="<?= isset($page['schedule_start']) ? date('Y-m-d\TH:i', strtotime($page['schedule_start'])) : '' ?>"/>
+                            <div class="relative">
+                                <select name="next_scheduled_status" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none appearance-none cursor-pointer text-slate-600 bg-slate-50">
+                                    <option value="">-- Tanpa Jadwal --</option>
+                                    <option value="published" <?= (($page['next_scheduled_status'] ?? '') === 'published') ? 'selected' : '' ?>>Otomatis Publish</option>
+                                    <option value="draft" <?= (($page['next_scheduled_status'] ?? '') === 'draft') ? 'selected' : '' ?>>Otomatis Draft</option>
+                                </select>
+                                <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">expand_more</span>
+                            </div>
                         </div>
-                        
+
                         <div class="flex-1 min-w-[200px]">
                             <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1">
-                                <span class="material-symbols-outlined text-[14px]">timer_off</span> Waktu Berakhir (Opsional)
+                                <span class="material-symbols-outlined text-[14px]">schedule</span> Waktu Eksekusi (Opsional)
                             </label>
-                            <input name="schedule_end" type="datetime-local" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none text-slate-700" value="<?= isset($page['schedule_end']) ? date('Y-m-d\TH:i', strtotime($page['schedule_end'])) : '' ?>"/>
+                            <input name="next_schedule_time" type="datetime-local" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none text-slate-700" value="<?= !empty($page['next_schedule_time']) ? date('Y-m-d\TH:i', strtotime($page['next_schedule_time'])) : '' ?>"/>
                         </div>
                     </div>
 
