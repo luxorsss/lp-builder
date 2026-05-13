@@ -315,6 +315,28 @@ if (!empty($p['is_pure_html'])) {
         </script>";
     }
 
+    // --- ADD CLARITY INJECTION FOR PURE HTML HERE ---
+    if (!empty($pix['clarity_id'])) {
+        $tracking_scripts .= "
+        <script>
+            window.addEventListener('load', function() {
+                setTimeout(function() {
+                    (function(c,l,a,r,i,t,y){
+                        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+                        t=l.createElement(r);t.async=1;t.src=\"https://www.clarity.ms/tag/\"+i;
+                        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+                    })(window, document, \"clarity\", \"script\", \"" . htmlspecialchars($pix['clarity_id']) . "\");
+                    
+                    if (typeof clarity === 'function') {
+                        clarity(\"set\", \"PageName\", \"" . addslashes($p['title']) . "\");
+                        clarity(\"set\", \"PageSlug\", \"" . addslashes($p['slug']) . "\");
+                    }
+                }, 2000); 
+            });
+        </script>";
+    }
+    // ------------------------------------------------
+
     if (stripos($raw_html, '</head>') !== false) {
         $raw_html = str_ireplace('</head>', $tracking_scripts . "\n</head>", $raw_html);
     } else {

@@ -1,633 +1,269 @@
 <?php
 require_once 'includes/config.php';
 require_once 'includes/auth.php';
-require_once 'includes/helpers.php';
 
-// Cek login
 requireLogin();
 $user = getCurrentUser($pdo);
 
-// Update status otomatis berdasarkan jadwal
-updateScheduledStatus($pdo, $user['id']);
-
-// Handle bulk update jika ada POST
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'bulk_update_status') {
-    $page_ids = $_POST['page_ids'] ?? [];
-    if (!is_array($page_ids) || empty($page_ids)) {
-        echo json_encode(['status' => 'error', 'message' => 'Tidak ada halaman yang dipilih.']);
-        exit;
-    }
-
-    $new_status = $_POST['status'] === 'published' ? 'published' : 'draft';
-    $page_ids = array_map('intval', $page_ids);
-    $page_ids = array_filter($page_ids, fn($id) => $id > 0);
-
-    if (empty($page_ids)) {
-        echo json_encode(['status' => 'error', 'message' => 'ID halaman tidak valid.']);
-        exit;
-    }
-
-    $placeholders = str_repeat('?,', count($page_ids) - 1) . '?';
-    $stmt = $pdo->prepare("UPDATE landing_pages SET status = ? WHERE id IN ($placeholders) AND user_id = ?");
-    $params = array_merge([$new_status], $page_ids, [$user['id']]);
-    $stmt->execute($params);
-
-    $affected = $stmt->rowCount();
-    echo json_encode([
-        'status' => 'success',
-        'message' => "Berhasil memperbarui status $affected landing page menjadi '$new_status'."
-    ]);
-    exit;
-}
-
-// Handle bulk move ke folder
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'bulk_move_project') {
-    $page_ids = $_POST['page_ids'] ?? [];
-    $project_id = !empty($_POST['project_id']) ? (int)$_POST['project_id'] : null;
-
-    if (empty($page_ids)) {
-        echo json_encode(['status' => 'error', 'message' => 'Tidak ada halaman yang dipilih.']);
-        exit;
-    }
-
-    $page_ids = array_map('intval', $page_ids);
-    $placeholders = str_repeat('?,', count($page_ids) - 1) . '?';
+// Handle Hapus Halaman
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
+    $delete_id = (int)$_POST['delete_id'];
+    $stmt = $pdo->prepare("DELETE FROM landing_pages WHERE id = ? AND user_id = ?");
+    $stmt->execute([$delete_id, $user['id']]);
     
-    $stmt = $pdo->prepare("UPDATE landing_pages SET project_id = ? WHERE id IN ($placeholders) AND user_id = ?");
-    $params = array_merge([$project_id], $page_ids, [$user['id']]);
-    $stmt->execute($params);
-
-    echo json_encode([
-        'status' => 'success',
-        'message' => "Berhasil memindahkan " . $stmt->rowCount() . " landing page ke folder."
-    ]);
+    // Hapus elemen terkait
+    $stmtEl = $pdo->prepare("DELETE FROM page_elements WHERE page_id = ?");
+    $stmtEl->execute([$delete_id]);
+    
+    header("Location: index.php?msg=deleted");
     exit;
 }
 
-// Proses tambah folder baru
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_folder') {
-    $folder_name = trim($_POST['folder_name']);
-    if (!empty($folder_name)) {
-        $stmt = $pdo->prepare("INSERT INTO projects (user_id, name) VALUES (?, ?)");
-        $stmt->execute([$user['id'], $folder_name]);
-        $_SESSION['message'] = "Folder '$folder_name' berhasil dibuat.";
-        header("Location: index.php");
-        exit;
-    }
+// Handle Ubah Status
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_status'])) {
+    $page_id = (int)$_POST['page_id'];
+    $new_status = $_POST['new_status'];
+    $stmt = $pdo->prepare("UPDATE landing_pages SET status = ? WHERE id = ? AND user_id = ?");
+    $stmt->execute([$new_status, $page_id, $user['id']]);
+    header("Location: index.php?msg=status_updated");
+    exit;
 }
 
-// Ambil daftar folder
-$stmt = $pdo->prepare("SELECT * FROM projects WHERE user_id = ? ORDER BY name ASC");
-$stmt->execute([$user['id']]);
-$projects = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// Ambil Daftar Folder untuk Filter
+$stmt_folders = $pdo->prepare("SELECT id, name FROM projects WHERE user_id = ? ORDER BY name ASC");
+$stmt_folders->execute([$user['id']]);
+$folders = $stmt_folders->fetchAll(PDO::FETCH_ASSOC);
 
-// Map folder untuk kemudahan akses nama
-$folder_map = [];
-foreach ($projects as $proj) {
-    $folder_map[$proj['id']] = $proj['name'];
+// Tangkap parameter filter folder
+$active_folder = isset($_GET['folder']) ? (int)$_GET['folder'] : 0;
+
+// Ambil Daftar Halaman (dengan logika filter)
+$query = "SELECT lp.*, p.name as project_name FROM landing_pages lp LEFT JOIN projects p ON lp.project_id = p.id WHERE lp.user_id = ?";
+$params = [$user['id']];
+
+if ($active_folder > 0) {
+    $query .= " AND lp.project_id = ?";
+    $params[] = $active_folder;
 }
 
-// Filter berdasarkan folder (opsional)
-$active_project_id = isset($_GET['project_id']) ? (int)$_GET['project_id'] : null;
+$query .= " ORDER BY lp.created_at DESC";
 
-if ($active_project_id) {
-    $stmt = $pdo->prepare("SELECT * FROM landing_pages WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC");
-    $stmt->execute([$user['id'], $active_project_id]);
-} else {
-    // Tampilkan semua LP (atau bisa diubah WHERE project_id IS NULL jika ingin menampilkan yang belum difolderkan saja)
-    $stmt = $pdo->prepare("SELECT * FROM landing_pages WHERE user_id = ? ORDER BY created_at DESC");
-    $stmt->execute([$user['id']]);
-}
-$landing_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$stmt = $pdo->prepare($query);
+$stmt->execute($params);
+$pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$total_lp = count($landing_pages);
-$published_count = count(array_filter($landing_pages, fn($p) => $p['status'] == 'published'));
-$draft_count = count(array_filter($landing_pages, fn($p) => $p['status'] == 'draft'));
+// Statistik
+$total_pages = count($pages);
+$published_pages = count(array_filter($pages, fn($p) => $p['status'] === 'published'));
 ?>
 
 <!DOCTYPE html>
-<html class="light" lang="id">
+<html lang="id">
 <head>
     <meta charset="utf-8"/>
-    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-    <title>LP Builder Pro - Main Dashboard</title>
-    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>Dashboard - LP Builder Pro</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-    <script id="tailwind-config">
-        tailwind.config = {
-          darkMode: "class",
-          theme: {
-            extend: {
-              colors: {
-                  "primary-fixed": "#dbe1ff", "on-error-container": "#93000a", "inverse-surface": "#2e3039",
-                  "surface": "#faf8ff", "primary": "#004ac6", "surface-tint": "#0053db",
-                  "surface-container-highest": "#e1e2ed", "error": "#ba1a1a",
-                  "surface-container-high": "#e7e7f3", "primary-container": "#2563eb",
-                  "secondary-container": "#dae2fd", "inverse-primary": "#b4c5ff",
-                  "on-primary-fixed-variant": "#003ea8", "outline": "#737686",
-                  "surface-container": "#ededf9", "surface-container-lowest": "#ffffff",
-                  "surface-container-low": "#f3f3fe", "surface-variant": "#e1e2ed",
-                  "secondary": "#565e74", "on-primary-container": "#eeefff",
-                  "on-surface": "#191b23", "outline-variant": "#c3c6d7",
-                  "on-surface-variant": "#434655", "on-primary": "#ffffff",
-                  "tertiary-fixed": "#ffdbcd", "on-tertiary-fixed": "#360f00"
-              },
-              spacing: { "sidebar-width": "260px", "container-max": "1280px" },
-              fontFamily: { "body-md": ["Inter"], "title-sm": ["Inter"], "headline-md": ["Inter"] }
-            }
-          }
-        }
-    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700" rel="stylesheet"/>
     <style>
+        body { font-family: 'Inter', sans-serif; }
         .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-        .material-symbols-outlined[data-weight="fill"] { font-variation-settings: 'FILL' 1; }
-        /* Simple scrollbar */
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* Animasi Dropdown */
+        .dropdown-menu { transform-origin: top right; transition: all 0.2s ease; opacity: 0; transform: scale(0.95) translateY(-10px); pointer-events: none; }
+        .dropdown-menu.show { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
     </style>
 </head>
-<body class="bg-surface text-on-surface font-body-md text-[14px] h-screen flex overflow-hidden">
+<body class="bg-slate-50 min-h-screen pb-20">
 
-<nav class="w-sidebar-width h-screen fixed left-0 top-0 bg-surface-container-low shadow-sm flex flex-col p-4 gap-2 z-20">
-    <div class="flex items-center gap-3 mb-8 px-2">
-        <div class="w-8 h-8 rounded bg-primary-container text-on-primary-container flex items-center justify-center font-bold">LP</div>
-        <div>
-            <h1 class="text-[20px] font-bold text-primary">LP Builder Pro</h1>
-            <p class="text-[12px] text-on-surface-variant">V.2.4.0</p>
-        </div>
-    </div>
-    
-    <a href="pages/builder.php<?= $active_project_id ? '?project_id='.$active_project_id : '' ?>" class="w-full bg-primary-container text-on-primary-container py-3 px-4 rounded-xl font-semibold mb-6 flex items-center justify-center gap-2 hover:bg-surface-tint transition-colors shadow-sm">
-        <span class="material-symbols-outlined">add</span> Buat LP Baru
-    </a>
-    
-    <div class="flex flex-col gap-1 flex-grow">
-        <a class="flex items-center gap-3 px-4 py-3 bg-secondary-container text-on-secondary-container rounded-xl font-semibold transition-all" href="index.php">
-            <span class="material-symbols-outlined" data-weight="fill">description</span>
-            <span>Semua Halaman</span>
-        </a>
-        
-        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest rounded-xl font-medium transition-all" href="pixels.php">
-            <span class="material-symbols-outlined">analytics</span>
-            <span>Pengaturan Pixel</span>
-        </a>
-    </div>
-    
-    <div class="flex flex-col gap-1 mt-auto pt-4 border-t border-surface-dim">
-        <div class="px-4 py-3 text-on-surface-variant flex items-center gap-3">
-            <span class="material-symbols-outlined">person</span>
-            <span class="font-medium truncate"><?= htmlspecialchars($user['username']) ?></span>
-        </div>
-        <a class="flex items-center gap-3 px-4 py-3 text-error rounded-xl hover:bg-surface-container-highest transition-all" href="actions/logout.php">
-            <span class="material-symbols-outlined">logout</span>
-            <span class="font-medium">Keluar</span>
-        </a>
-    </div>
-</nav>
-
-<main class="ml-[260px] flex-1 flex flex-col h-screen overflow-y-auto bg-surface-container-lowest relative">
-
-    <?php if (isset($_SESSION['message'])): ?>
-        <div id="flashMessage" class="absolute top-4 left-1/2 transform -translate-x-1/2 bg-[#e8f5e9] text-[#2e7d32] border border-[#a5d6a7] px-4 py-3 rounded-lg shadow-md flex items-center gap-2 z-50 transition-opacity duration-500">
-            <span class="material-symbols-outlined">check_circle</span>
-            <span class="font-medium"><?= $_SESSION['message'] ?></span>
-            <button onclick="document.getElementById('flashMessage').style.display='none'" class="ml-4 text-[#2e7d32] hover:text-[#1b5e20]"><span class="material-symbols-outlined text-[18px]">close</span></button>
-        </div>
-        <?php unset($_SESSION['message']); ?>
-    <?php endif; ?>
-
-    <div class="p-8 max-w-container-max mx-auto w-full flex-1">
-        
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            <div class="lg:col-span-2 bg-gradient-to-br from-primary-fixed to-surface-container-low p-8 rounded-xl shadow-sm relative overflow-hidden flex flex-col justify-center border border-outline-variant/20">
-                <div class="relative z-10">
-                    <h2 class="text-[32px] font-bold text-primary mb-2 uppercase">SELAMAT DATANG!</h2>
-                    <p class="text-[15px] text-on-surface-variant max-w-md">Kelola dan buat landing page Anda dengan mudah menggunakan builder kami.</p>
-                </div>
+    <nav class="bg-white border-b border-slate-200 sticky top-0 z-40">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-md">LP</div>
+                <h1 class="text-[18px] font-bold text-slate-900 hidden sm:block">Builder Pro</h1>
             </div>
             
-            <div class="flex flex-col gap-4">
-                <div class="bg-surface-container-lowest p-4 rounded-xl shadow-sm flex items-center justify-between border border-surface-container-highest">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary"><span class="material-symbols-outlined">description</span></div>
-                        <span class="text-[15px] font-medium text-on-surface">Total LP</span>
+            <div class="flex items-center gap-4">
+                <a href="pixels.php" class="text-slate-500 hover:text-blue-600 flex items-center gap-1 transition-colors">
+                    <span class="material-symbols-outlined text-[20px]">analytics</span>
+                    <span class="text-[13px] font-semibold hidden sm:block">Pixel & Tracking</span>
+                </a>
+                <div class="h-6 w-px bg-slate-200"></div>
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
+                        <span class="material-symbols-outlined text-[18px]">person</span>
                     </div>
-                    <span class="text-[24px] font-bold text-on-background"><?= $total_lp ?></span>
+                    <span class="text-[13px] font-semibold text-slate-700 hidden sm:block"><?= htmlspecialchars($user['username']) ?></span>
                 </div>
-                <div class="bg-surface-container-lowest p-4 rounded-xl shadow-sm flex items-center justify-between border border-surface-container-highest">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-lg bg-secondary-container flex items-center justify-center text-on-secondary-container"><span class="material-symbols-outlined">check_circle</span></div>
-                        <span class="text-[15px] font-medium text-on-surface">Published</span>
-                    </div>
-                    <span class="text-[24px] font-bold text-on-background"><?= $published_count ?></span>
-                </div>
-                <div class="bg-surface-container-lowest p-4 rounded-xl shadow-sm flex items-center justify-between border border-surface-container-highest">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-lg bg-[#fff8e1] flex items-center justify-center text-[#f57f17]"><span class="material-symbols-outlined">edit_document</span></div>
-                        <span class="text-[15px] font-medium text-on-surface">Draft</span>
-                    </div>
-                    <span class="text-[24px] font-bold text-on-background"><?= $draft_count ?></span>
-                </div>
+                <a href="logout.php" class="text-red-500 hover:text-red-700 ml-2">
+                    <span class="material-symbols-outlined text-[20px]">logout</span>
+                </a>
             </div>
         </div>
+    </nav>
 
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div class="flex items-center gap-2">
-                <span class="material-symbols-outlined text-primary text-[28px]">folder_copy</span>
-                <h2 class="text-[24px] font-bold text-on-background">Landing Page Saya</h2>
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 sm:mt-8">
+        
+        <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+            <div>
+                <h2 class="text-[24px] font-bold text-slate-900">Landing Pages</h2>
+                <p class="text-[14px] text-slate-500 mt-1">Kelola semua halaman promosi Anda di sini.</p>
             </div>
+            
             <div class="flex gap-3">
-                <button onclick="openModal('addFolderModal')" class="bg-surface-container-lowest border border-outline-variant text-on-surface-variant px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-surface-container-low transition-colors shadow-sm">
-                    <span class="material-symbols-outlined text-[18px]">create_new_folder</span> Folder Baru
-                </button>
-                <a href="pages/builder.php<?= $active_project_id ? '?project_id='.$active_project_id : '' ?>" class="bg-primary-container text-on-primary-container px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-surface-tint transition-colors shadow-sm">
-                    <span class="material-symbols-outlined text-[18px]">add</span> Buat LP Baru
+                <a href="pages/builder.php" class="flex-1 sm:flex-none bg-blue-600 text-white font-bold text-[14px] px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined text-[18px]">add</span> Buat Halaman
                 </a>
             </div>
         </div>
 
-        <div class="flex overflow-x-auto gap-2 pb-3 mb-4 no-scrollbar border-b border-surface-container-highest">
-            <a href="index.php" class="px-4 py-2 rounded-lg <?= !$active_project_id ? 'bg-secondary-container text-on-secondary-container border-b-2 border-primary font-bold' : 'text-on-surface-variant hover:bg-surface-container font-medium transition-colors' ?> whitespace-nowrap">
-                SEMUA LP
+        <div class="flex overflow-x-auto pb-4 sm:pb-0 sm:grid sm:grid-cols-3 gap-4 mb-8 hide-scrollbar">
+            <div class="bg-white border border-slate-200 p-5 rounded-2xl min-w-[200px] flex-1">
+                <div class="text-slate-500 text-[13px] font-semibold mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">description</span> Total Halaman</div>
+                <div class="text-[28px] font-bold text-slate-900"><?= $total_pages ?></div>
+            </div>
+            <div class="bg-white border border-slate-200 p-5 rounded-2xl min-w-[200px] flex-1">
+                <div class="text-green-600 text-[13px] font-semibold mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">public</span> Publik / Aktif</div>
+                <div class="text-[28px] font-bold text-slate-900"><?= $published_pages ?></div>
+            </div>
+            <div class="bg-white border border-slate-200 p-5 rounded-2xl min-w-[200px] flex-1">
+                <div class="text-slate-500 text-[13px] font-semibold mb-1 flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">draft</span> Draft</div>
+                <div class="text-[28px] font-bold text-slate-900"><?= $total_pages - $published_pages ?></div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 overflow-x-auto pb-4 mb-2 hide-scrollbar">
+            <a href="index.php" class="whitespace-nowrap px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors <?= $active_folder === 0 ? 'bg-slate-800 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50' ?>">
+                Semua Halaman
             </a>
-            <?php foreach($projects as $proj): ?>
-                <a href="index.php?project_id=<?= $proj['id'] ?>" class="px-4 py-2 rounded-lg <?= $active_project_id == $proj['id'] ? 'bg-secondary-container text-on-secondary-container border-b-2 border-primary font-bold' : 'text-on-surface-variant hover:bg-surface-container font-medium transition-colors' ?> whitespace-nowrap">
-                    <?= htmlspecialchars($proj['name']) ?>
+            <?php foreach ($folders as $f): ?>
+                <a href="index.php?folder=<?= $f['id'] ?>" class="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors <?= $active_folder === $f['id'] ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50' ?>">
+                    <span class="material-symbols-outlined text-[16px] <?= $active_folder === $f['id'] ? 'text-blue-200' : 'text-slate-400' ?>">folder</span>
+                    <?= htmlspecialchars($f['name']) ?>
                 </a>
             <?php endforeach; ?>
         </div>
 
-        <div class="bg-surface-container-lowest rounded-xl shadow-sm border border-surface-container-highest overflow-visible pb-20">
-            
-            <div class="p-4 bg-surface-container-lowest border-b border-surface-container-highest flex items-center justify-between" id="bulkActionBar" style="display: none;">
-                <div class="flex items-center gap-3">
-                    <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" id="selectAll" class="rounded border-outline-variant text-primary-container focus:ring-primary-container w-5 h-5 bg-surface-container-lowest"/>
-                        <span class="font-medium text-on-surface-variant">Pilih Semua</span>
-                    </label>
-                    <span class="text-xs font-bold text-primary bg-primary-fixed px-2 py-1 rounded" id="selectedCount">0</span>
+        <?php if (empty($pages)): ?>
+            <div class="bg-white border border-slate-200 rounded-2xl p-12 text-center">
+                <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                    <span class="material-symbols-outlined text-[32px]">post_add</span>
                 </div>
-                <div class="flex gap-2 relative">
-                    <div class="relative inline-block text-left dropdown-container">
-                        <button onclick="toggleDropdown('bulkStatusDropdown')" class="px-3 py-1.5 rounded bg-surface-container-lowest border border-outline-variant text-on-surface-variant font-medium flex items-center gap-2 hover:bg-surface-container-low transition-colors">
-                            Ubah Status <span class="material-symbols-outlined text-[18px]">arrow_drop_down</span>
-                        </button>
-                        <div id="bulkStatusDropdown" class="hidden origin-top-right absolute right-0 mt-2 w-40 rounded-md shadow-lg bg-surface-container-lowest border border-outline-variant ring-1 ring-black ring-opacity-5 z-50">
-                            <div class="py-1">
-                                <button onclick="applyBulkAction('published')" class="block w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low">Set Published</button>
-                                <button onclick="applyBulkAction('draft')" class="block w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low">Set Draft</button>
-                            </div>
-                        </div>
-                    </div>
+                <h3 class="text-[16px] font-bold text-slate-900 mb-1">Belum ada halaman</h3>
+                <p class="text-[14px] text-slate-500 mb-6">Mulai buat landing page pertama Anda sekarang.</p>
+                <a href="pages/builder.php" class="inline-flex bg-blue-600 text-white font-bold text-[14px] px-6 py-2.5 rounded-xl hover:bg-blue-700 transition-all">Buat Halaman Baru</a>
+            </div>
+        <?php else: ?>
+            <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-visible">
+                <?php foreach ($pages as $p): ?>
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 border-b border-slate-100 hover:bg-slate-50 transition-colors gap-4">
                     
-                    <div class="relative inline-block text-left dropdown-container">
-                        <button onclick="toggleDropdown('bulkMoveDropdown')" class="px-3 py-1.5 rounded bg-surface-container-lowest border border-outline-variant text-on-surface-variant font-medium flex items-center gap-2 hover:bg-surface-container-low transition-colors">
-                            Pindah Folder <span class="material-symbols-outlined text-[18px]">arrow_drop_down</span>
-                        </button>
-                        <div id="bulkMoveDropdown" class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-surface-container-lowest border border-outline-variant ring-1 ring-black ring-opacity-5 z-50">
-                            <div class="py-1 max-h-60 overflow-y-auto">
-                                <button onclick="applyBulkMove(0)" class="block w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low italic">-- Tanpa Folder --</button>
-                                <?php foreach($projects as $proj): ?>
-                                    <button onclick="applyBulkMove(<?= $proj['id'] ?>)" class="block w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low"><?= htmlspecialchars($proj['name']) ?></button>
-                                <?php endforeach; ?>
+                    <div class="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
+                        <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 mt-1 sm:mt-0">
+                            <span class="material-symbols-outlined text-[20px] sm:text-[24px]">web</span>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2">
+                                <h3 class="text-[15px] sm:text-[16px] font-bold text-slate-900 truncate"><?= htmlspecialchars($p['title']) ?></h3>
+                                
+                                <?php if (!empty($p['project_name'])): ?>
+                                    <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10px] font-bold border border-slate-200 uppercase flex items-center gap-1">
+                                        <span class="material-symbols-outlined text-[12px]">folder</span> <?= htmlspecialchars($p['project_name']) ?>
+                                    </span>
+                                <?php endif; ?>
+                            </div>
+                            
+                            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1 text-[12px] sm:text-[13px] text-slate-500">
+                                <a href="<?= $p['slug'] ?>" target="_blank" class="text-blue-600 hover:underline flex items-center gap-1 truncate max-w-[150px] sm:max-w-xs">
+                                    <span class="material-symbols-outlined text-[14px]">link</span> /<?= $p['slug'] ?>
+                                </a>
+                                <span class="hidden sm:inline w-1 h-1 rounded-full bg-slate-300"></span>
+                                <span class="hidden sm:inline flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">calendar_today</span> <?= date('d M Y', strtotime($p['created_at'])) ?></span>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <?php if (empty($landing_pages)): ?>
-                <div class="p-12 text-center flex flex-col items-center justify-center">
-                    <span class="material-symbols-outlined text-[64px] text-outline mb-4">note_stack</span>
-                    <h4 class="text-[18px] font-bold text-on-surface mb-2">Belum ada landing page</h4>
-                    <p class="text-on-surface-variant mb-6">Buat landing page pertamamu sekarang!</p>
-                    <a href="pages/builder.php<?= $active_project_id ? '?project_id='.$active_project_id : '' ?>" class="bg-primary text-on-primary px-6 py-2 rounded-lg font-medium hover:bg-primary-container transition-colors shadow-sm">Buat Landing Page</a>
-                </div>
-            <?php else: ?>
-                <div class="w-full overflow-x-auto min-h-[300px]">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-surface-container-low text-on-surface-variant text-[12px] font-bold uppercase tracking-wider border-b border-surface-container-highest">
-                                <th class="p-4 w-12 text-center">
-                                    <span class="material-symbols-outlined text-[18px] text-outline-variant">check_box_outline_blank</span>
-                                </th>
-                                <th class="p-4">NAMA HALAMAN & FOLDER</th>
-                                <th class="p-4">STATUS</th>
-                                <th class="p-4">TANGGAL</th>
-                                <th class="p-4 text-right">AKSI</th>
-                            </tr>
-                        </thead>
-                        <tbody class="text-on-surface">
-                            <?php foreach ($landing_pages as $page): ?>
-                                <tr class="border-b border-surface-container-highest hover:bg-surface-container-low transition-colors group">
-                                    <td class="p-4 text-center">
-                                        <input type="checkbox" class="page-checkbox rounded border-outline-variant text-primary-container focus:ring-primary-container w-5 h-5 bg-surface-container-lowest" value="<?= $page['id'] ?>">
-                                    </td>
-                                    <td class="p-4">
-                                        <div class="flex items-center gap-4">
-                                            <div class="w-12 h-12 bg-surface-dim rounded-lg overflow-hidden flex-shrink-0 border border-outline-variant flex items-center justify-center text-outline">
-                                                <span class="material-symbols-outlined text-[24px]">web</span>
-                                            </div>
-                                            <div>
-                                                <div class="text-[15px] font-bold text-on-background mb-1"><?= htmlspecialchars($page['title']) ?></div>
-                                                <div class="flex items-center gap-1 text-on-surface-variant text-[13px]">
-                                                    <?php if ($page['project_id'] && isset($folder_map[$page['project_id']])): ?>
-                                                        <span class="material-symbols-outlined text-[14px]">folder</span> Folder: <?= htmlspecialchars($folder_map[$page['project_id']]) ?>
-                                                    <?php else: ?>
-                                                        <span class="italic opacity-70">-- Tanpa Folder --</span>
-                                                    <?php endif; ?>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td class="p-4">
-                                        <?php if ($page['status'] == 'published'): ?>
-                                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-[#e8f5e9] text-[#2e7d32]">PUBLISHED</span>
-                                        <?php else: ?>
-                                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-[#fff8e1] text-[#f57f17]">DRAFT</span>
-                                        <?php endif; ?>
-                                        
-                                        <?php if ($page['next_schedule_time']): ?>
-                                            <div class="mt-1 text-[11px] text-primary flex items-center gap-1">
-                                                <span class="material-symbols-outlined text-[12px]">schedule</span> 
-                                                <span>=> <?= strtoupper($page['next_scheduled_status']) ?> (<?= date('d/m/y H:i', strtotime($page['next_schedule_time'])) ?>)</span>
-                                            </div>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td class="p-4 text-on-surface-variant text-[13px] font-medium">
-                                        <?= date('d M Y', strtotime($page['created_at'])) ?>
-                                    </td>
-                                    <td class="p-4 text-right">
-                                        <div class="flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <a href="pages/builder.php?id=<?= $page['id'] ?>" class="p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-primary transition-colors" title="Edit Builder">
-                                                <span class="material-symbols-outlined text-[20px]">edit</span>
-                                            </a>
-                                            <a href="pages/preview.php?id=<?= $page['id'] ?>" target="_blank" class="p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest transition-colors" title="Preview">
-                                                <span class="material-symbols-outlined text-[20px]">visibility</span>
-                                            </a>
-                                            <div class="relative inline-block text-left dropdown-container">
-                                                <button onclick="toggleDropdown('actionMenu-<?= $page['id'] ?>')" class="p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest transition-colors" title="Aksi Lainnya">
-                                                    <span class="material-symbols-outlined text-[20px]">more_vert</span>
-                                                </button>
-                                                <div id="actionMenu-<?= $page['id'] ?>" class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-surface-container-lowest border border-outline-variant ring-1 ring-black ring-opacity-5 z-50">
-                                                    <div class="py-1">
-                                                        <a href="<?= $page['slug'] ?>" target="_blank" class="flex items-center gap-2 px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low"><span class="material-symbols-outlined text-[18px]">public</span> Buka Live URL</a>
-                                                        <button onclick="openScheduleModal(<?= $page['id'] ?>, '<?= htmlspecialchars(addslashes($page['title'])) ?>')" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-on-surface hover:bg-surface-container-low text-left"><span class="material-symbols-outlined text-[18px]">schedule</span> Atur Jadwal</button>
-                                                        
-                                                        <div class="border-t border-b border-surface-variant my-1 px-4 py-2 text-xs font-bold text-on-surface-variant">Pindah Folder:</div>
-                                                        <button onclick="moveSinglePage(<?= $page['id'] ?>, null)" class="w-full flex items-center px-4 py-1.5 text-sm text-on-surface hover:bg-surface-container-low text-left italic">-- Tanpa Folder --</button>
-                                                        <?php foreach($projects as $proj): ?>
-                                                            <button onclick="moveSinglePage(<?= $page['id'] ?>, <?= $proj['id'] ?>)" class="w-full flex items-center px-4 py-1.5 text-sm text-on-surface hover:bg-surface-container-low text-left"><span class="material-symbols-outlined text-[16px] mr-2 text-outline-variant">folder</span> <?= htmlspecialchars($proj['name']) ?></button>
-                                                        <?php endforeach; ?>
+                    <div class="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto border-t sm:border-0 border-slate-100 pt-3 sm:pt-0">
+                        
+                        <span class="px-2.5 py-1 rounded-lg text-[11px] sm:text-[12px] font-bold uppercase tracking-wider <?= $p['status'] == 'published' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600' ?> mr-auto sm:mr-2">
+                            <?= $p['status'] == 'published' ? 'Aktif' : 'Draft' ?>
+                        </span>
 
-                                                        <div class="border-t border-surface-variant my-1"></div>
-                                                        <button onclick="duplicatePage(<?= $page['id'] ?>, '<?= htmlspecialchars(addslashes($page['title'])) ?>')" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-[#f57f17] hover:bg-surface-container-low text-left"><span class="material-symbols-outlined text-[18px]">content_copy</span> Duplikat</button>
-                                                        <a href="actions/delete_page.php?id=<?= $page['id'] ?>" onclick="return confirm('Yakin ingin menghapus halaman ini secara permanen?')" class="flex items-center gap-2 px-4 py-2 text-sm text-error hover:bg-error-container/20"><span class="material-symbols-outlined text-[18px]">delete</span> Hapus</a>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
-        </div>
-    </div>
-</main>
+                        <a href="pages/builder.php?id=<?= $p['id'] ?>" class="hidden sm:flex px-4 py-2 bg-slate-100 text-slate-700 text-[13px] font-bold rounded-xl hover:bg-blue-600 hover:text-white transition-colors items-center gap-1">
+                            <span class="material-symbols-outlined text-[16px]">edit</span> Edit
+                        </a>
+                        <a href="pages/builderhp.php?id=<?= $p['id'] ?>" class="sm:hidden px-4 py-2 bg-blue-50 text-blue-700 text-[13px] font-bold rounded-xl hover:bg-blue-100 transition-colors flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[16px]">edit_document</span> Edit
+                        </a>
 
-<div id="modalOverlay" class="fixed inset-0 bg-on-background/40 backdrop-blur-sm z-[100] hidden items-center justify-center p-4">
-    
-    <div id="addFolderModal" class="hidden bg-surface-container-lowest rounded-xl shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.2)] w-full max-w-[480px] flex-col overflow-hidden border border-outline-variant/30 relative transform transition-all">
-        <form method="POST">
-            <input type="hidden" name="action" value="add_folder">
-            <div class="flex justify-between items-center p-6 border-b border-surface-variant">
-                <h2 class="text-[18px] font-bold text-on-surface flex items-center gap-2">
-                    <span class="material-symbols-outlined text-[24px] text-primary">create_new_folder</span> Buat Folder Baru
-                </h2>
-                <button type="button" onclick="closeModal('addFolderModal')" class="text-on-surface-variant hover:text-on-surface p-1 rounded-full hover:bg-surface-container-low transition-colors">
-                    <span class="material-symbols-outlined text-[20px]">close</span>
-                </button>
-            </div>
-            <div class="p-6">
-                <div class="flex flex-col gap-2">
-                    <label class="text-[14px] font-semibold text-on-surface-variant">Nama Folder / Produk</label>
-                    <input type="text" name="folder_name" placeholder="Contoh: Program Ramadhan" required class="w-full px-4 py-2 border border-outline-variant rounded-lg text-on-surface bg-surface-container-lowest focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"/>
-                </div>
-            </div>
-            <div class="px-6 py-4 bg-surface-container-lowest border-t border-surface-variant flex justify-end gap-3">
-                <button type="button" onclick="closeModal('addFolderModal')" class="px-4 py-2 text-[14px] font-medium text-secondary hover:bg-surface-container-low rounded-lg transition-colors">Batal</button>
-                <button type="submit" class="px-4 py-2 text-[14px] font-medium text-on-primary bg-primary rounded-lg hover:bg-primary-container transition-colors shadow-sm">Simpan</button>
-            </div>
-        </form>
-    </div>
+                        <div class="relative">
+                            <button type="button" onclick="toggleDropdown(<?= $p['id'] ?>)" class="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors focus:outline-none">
+                                <span class="material-symbols-outlined">more_vert</span>
+                            </button>
+                            
+                            <div id="drop-<?= $p['id'] ?>" class="dropdown-menu absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg shadow-slate-200/50 py-1 z-50">
+                                <form method="POST">
+                                    <input type="hidden" name="toggle_status" value="1">
+                                    <input type="hidden" name="page_id" value="<?= $p['id'] ?>">
+                                    <input type="hidden" name="new_status" value="<?= $p['status'] === 'published' ? 'draft' : 'published' ?>">
+                                    <button type="submit" class="w-full flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600 text-left">
+                                        <span class="material-symbols-outlined text-[18px]">
+                                            <?= $p['status'] === 'published' ? 'visibility_off' : 'publish' ?>
+                                        </span> 
+                                        Jadikan <?= $p['status'] === 'published' ? 'Draft' : 'Publish' ?>
+                                    </button>
+                                </form>
+                                <a href="preview.php?id=<?= $p['id'] ?>" target="_blank" class="flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600">
+                                    <span class="material-symbols-outlined text-[18px]">visibility</span> Lihat Pratinjau
+                                </a>
+                                <a href="pages/export_html.php?id=<?= $p['id'] ?>" class="flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600">
+                                    <span class="material-symbols-outlined text-[18px]">html</span> Export HTML
+                                </a>
+                                <div class="h-px bg-slate-100 my-1"></div>
+                                <a href="https://clarity.microsoft.com/" target="_blank" class="flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium text-slate-700 hover:bg-orange-50 hover:text-orange-600">
+                                    <span class="material-symbols-outlined text-[18px]">local_fire_department</span> Lihat Heatmap
+                                </a>
+                                <div class="h-px bg-slate-100 my-1"></div>
+                                <form method="POST" onsubmit="return confirm('Yakin ingin menghapus halaman ini secara permanen?');">
+                                    <input type="hidden" name="delete_id" value="<?= $p['id'] ?>">
+                                    <button type="submit" class="w-full flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium text-red-600 hover:bg-red-50 text-left">
+                                        <span class="material-symbols-outlined text-[18px]">delete</span> Hapus Halaman
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
 
-    <div id="scheduleModal" class="hidden bg-surface-container-lowest rounded-xl shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.2)] w-full max-w-[480px] flex-col overflow-hidden border border-outline-variant/30 relative transform transition-all">
-        <form id="scheduleForm">
-            <input type="hidden" id="schedulePageId" name="page_id">
-            <div class="flex justify-between items-center p-6 border-b border-surface-variant">
-                <h2 class="text-[18px] font-bold text-on-surface flex items-center gap-2" id="scheduleModalTitle">
-                    <span class="material-symbols-outlined text-[24px] text-primary">schedule</span> Atur Jadwal
-                </h2>
-                <button type="button" onclick="closeModal('scheduleModal')" class="text-on-surface-variant hover:text-on-surface p-1 rounded-full hover:bg-surface-container-low transition-colors">
-                    <span class="material-symbols-outlined text-[20px]">close</span>
-                </button>
-            </div>
-            <div class="p-6 flex flex-col gap-5">
-                <div class="flex flex-col gap-2">
-                    <label class="text-[14px] font-semibold text-on-surface-variant">Status Baru</label>
-                    <div class="relative">
-                        <select name="new_status" required class="w-full appearance-none px-4 py-2 border border-outline-variant rounded-lg text-on-surface bg-surface-container-lowest focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all cursor-pointer">
-                            <option value="published">Published (Aktifkan Web)</option>
-                            <option value="draft">Draft (Matikan Web)</option>
-                        </select>
-                        <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">expand_more</span>
                     </div>
                 </div>
-                <div class="flex flex-col gap-2">
-                    <label class="text-[14px] font-semibold text-on-surface-variant">Tanggal & Waktu</label>
-                    <input type="datetime-local" name="schedule_time" required class="w-full px-4 py-2 border border-outline-variant rounded-lg text-on-surface bg-surface-container-lowest focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"/>
-                </div>
+                <?php endforeach; ?>
             </div>
-            <div class="px-6 py-4 bg-surface-container-lowest border-t border-surface-variant flex justify-end gap-3">
-                <button type="button" onclick="closeModal('scheduleModal')" class="px-4 py-2 text-[14px] font-medium text-secondary hover:bg-surface-container-low rounded-lg transition-colors">Batal</button>
-                <button type="button" id="saveScheduleBtn" class="px-4 py-2 text-[14px] font-medium text-on-primary bg-primary rounded-lg hover:bg-primary-container transition-colors shadow-sm">Simpan Jadwal</button>
-            </div>
-        </form>
+        <?php endif; ?>
     </div>
 
-</div>
-
-<script>
-    // --- Modals Logic ---
-    const modalOverlay = document.getElementById('modalOverlay');
-    
-    function openModal(modalId) {
-        modalOverlay.classList.remove('hidden');
-        modalOverlay.classList.add('flex');
-        document.getElementById(modalId).classList.remove('hidden');
-        document.getElementById(modalId).classList.add('flex');
-    }
-
-    function closeModal(modalId) {
-        modalOverlay.classList.add('hidden');
-        modalOverlay.classList.remove('flex');
-        document.getElementById(modalId).classList.add('hidden');
-        document.getElementById(modalId).classList.remove('flex');
-    }
-
-    // --- Dropdowns Logic ---
-    function toggleDropdown(dropdownId) {
-        const dropdown = document.getElementById(dropdownId);
-        const isHidden = dropdown.classList.contains('hidden');
-        
-        // Hide all other dropdowns first
-        document.querySelectorAll('.dropdown-container > div:not(.hidden)').forEach(el => {
-            if(el.id !== dropdownId) el.classList.add('hidden');
-        });
-
-        if (isHidden) {
-            dropdown.classList.remove('hidden');
-        } else {
-            dropdown.classList.add('hidden');
-        }
-    }
-
-    // Close dropdowns if clicked outside
-    document.addEventListener('click', function(event) {
-        if (!event.target.closest('.dropdown-container')) {
-            document.querySelectorAll('.dropdown-container > div:not(.hidden)').forEach(el => {
-                el.classList.add('hidden');
+    <script>
+        function toggleDropdown(id) {
+            const dropdown = document.getElementById('drop-' + id);
+            const isShowing = dropdown.classList.contains('show');
+            
+            // Tutup semua dropdown yang sedang terbuka
+            document.querySelectorAll('.dropdown-menu').forEach(el => {
+                el.classList.remove('show');
             });
-        }
-    });
-
-    // --- Core Logic ---
-    document.addEventListener('DOMContentLoaded', function() {
-        const checkboxes = document.querySelectorAll('.page-checkbox');
-        const selectAll = document.getElementById('selectAll');
-        const bulkActionBar = document.getElementById('bulkActionBar');
-        const selectedCountEl = document.getElementById('selectedCount');
-
-        // Checkbox Logic
-        function updateBulkActionBar() {
-            const checkedBoxes = Array.from(checkboxes).filter(cb => cb.checked);
-            if (checkedBoxes.length > 0) {
-                bulkActionBar.style.display = 'flex';
-                selectedCountEl.textContent = checkedBoxes.length;
-            } else {
-                bulkActionBar.style.display = 'none';
-                selectAll.checked = false;
+            
+            // Jika sebelumnya tertutup, buka dropdown yang diklik
+            if (!isShowing) {
+                dropdown.classList.add('show');
             }
         }
 
-        checkboxes.forEach(cb => {
-            cb.addEventListener('change', updateBulkActionBar);
+        // Tutup dropdown saat klik di luar area
+        document.addEventListener('click', function(event) {
+            if (!event.target.closest('.relative')) {
+                document.querySelectorAll('.dropdown-menu').forEach(el => {
+                    el.classList.remove('show');
+                });
+            }
         });
-
-        if(selectAll) {
-            selectAll.addEventListener('change', function() {
-                checkboxes.forEach(cb => cb.checked = this.checked);
-                updateBulkActionBar();
-            });
-        }
-
-        // Action: Bulk Update Status
-        window.applyBulkAction = function(selectedStatus) {
-            const selectedIds = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
-            if (selectedIds.length === 0) return;
-
-            const formData = new URLSearchParams();
-            formData.append('action', 'bulk_update_status');
-            formData.append('status', selectedStatus);
-            selectedIds.forEach(id => formData.append('page_ids[]', id));
-
-            fetch('', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: formData
-            }).then(r => r.json()).then(data => {
-                if (data.status === 'success') { location.reload(); } else { alert(data.message); }
-            });
-        };
-
-        // Action: Bulk Move Folder
-        window.applyBulkMove = function(selectedProjectId) {
-            const selectedIds = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
-            if (selectedIds.length === 0) return;
-
-            const formData = new URLSearchParams();
-            formData.append('action', 'bulk_move_project');
-            formData.append('project_id', selectedProjectId === 0 ? '' : selectedProjectId);
-            selectedIds.forEach(id => formData.append('page_ids[]', id));
-
-            fetch('', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: formData
-            }).then(r => r.json()).then(data => {
-                if (data.status === 'success') { location.reload(); } else { alert(data.message); }
-            });
-        };
-
-        // Action: Single Move
-        window.moveSinglePage = function(pageId, projectId) {
-            const formData = new URLSearchParams();
-            formData.append('action', 'bulk_move_project');
-            formData.append('project_id', projectId || '');
-            formData.append('page_ids[]', pageId);
-
-            fetch('', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: formData
-            }).then(r => r.json()).then(data => {
-                if (data.status === 'success') { location.reload(); }
-            });
-        };
-
-        // Action: Schedule Setup
-        window.openScheduleModal = function(pageId, title) {
-            document.getElementById('schedulePageId').value = pageId;
-            document.getElementById('scheduleModalTitle').innerHTML = `<span class="material-symbols-outlined text-[24px] text-primary">schedule</span> Atur Jadwal: ${title}`;
-            openModal('scheduleModal');
-        };
-
-        // Action: Save Schedule
-        document.getElementById('saveScheduleBtn').addEventListener('click', function() {
-            const form = document.getElementById('scheduleForm');
-            if(!form.checkValidity()) { form.reportValidity(); return; }
-
-            const formData = new FormData(form);
-            formData.append('action', 'schedule_toggle');
-
-            fetch('actions/schedule_toggle.php', {
-                method: 'POST',
-                body: formData
-            }).then(r => r.json()).then(data => {
-                if (data.status === 'success') { location.reload(); } else { alert(data.message); }
-            });
-        });
-
-        // Action: Duplicate
-        window.duplicatePage = function(pageId, title) {
-            if (!confirm(`Duplikat halaman "${title}"?`)) return;
-
-            const formData = new FormData();
-            formData.append('page_id', pageId);
-            formData.append('action', 'duplicate');
-
-            fetch('actions/duplicate_page.php', {
-                method: 'POST',
-                body: formData
-            }).then(r => r.json()).then(data => {
-                if (data.status === 'success') { location.reload(); } else { alert(data.message); }
-            });
-        };
-    });
-</script>
+    </script>
 </body>
 </html>

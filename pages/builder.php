@@ -349,7 +349,7 @@ function renderElementUI($type, $idx, $content, $st)
                         </div>
                     </div>
 
-                    <div class="flex flex-wrap gap-4 items-end pt-4 border-t border-outline-variant border-dashed">
+                    <div class="flex flex-wrap gap-4 items-end pt-4 border-t border-outline-variant border-dashed mb-4">
                         <div class="w-64">
                             <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">analytics</span> Meta Pixel & Clarity</label>
                             <div class="relative">
@@ -378,6 +378,36 @@ function renderElementUI($type, $idx, $content, $st)
                             </div>
                         </div>
                     </div>
+
+                    <div class="flex flex-wrap gap-4 items-end pt-4 border-t border-outline-variant border-dashed">
+                        <div class="w-48">
+                            <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1">
+                                <span class="material-symbols-outlined text-[14px]">toggle_on</span> Status Publikasi
+                            </label>
+                            <div class="relative">
+                                <select name="status" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] font-semibold focus:border-primary outline-none appearance-none cursor-pointer <?= ($page['status'] ?? 'draft') === 'published' ? 'text-green-700 bg-green-50' : 'text-slate-600 bg-slate-50' ?>" onchange="this.className = this.value === 'published' ? 'w-full border border-outline-variant rounded-lg px-3 py-2 text-[14px] font-semibold focus:border-primary outline-none appearance-none cursor-pointer text-green-700 bg-green-50' : 'w-full border border-outline-variant rounded-lg px-3 py-2 text-[14px] font-semibold focus:border-primary outline-none appearance-none cursor-pointer text-slate-600 bg-slate-50'">
+                                    <option value="draft" <?= (($page['status'] ?? 'draft') == 'draft') ? 'selected' : '' ?>>⚫ Draft</option>
+                                    <option value="published" <?= (($page['status'] ?? '') == 'published') ? 'selected' : '' ?>>🟢 Published</option>
+                                </select>
+                                <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">expand_more</span>
+                            </div>
+                        </div>
+
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1">
+                                <span class="material-symbols-outlined text-[14px]">schedule</span> Waktu Mulai (Opsional)
+                            </label>
+                            <input name="schedule_start" type="datetime-local" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none text-slate-700" value="<?= isset($page['schedule_start']) ? date('Y-m-d\TH:i', strtotime($page['schedule_start'])) : '' ?>"/>
+                        </div>
+                        
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="block text-[12px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider flex items-center gap-1">
+                                <span class="material-symbols-outlined text-[14px]">timer_off</span> Waktu Berakhir (Opsional)
+                            </label>
+                            <input name="schedule_end" type="datetime-local" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none text-slate-700" value="<?= isset($page['schedule_end']) ? date('Y-m-d\TH:i', strtotime($page['schedule_end'])) : '' ?>"/>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
