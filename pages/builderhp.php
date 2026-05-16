@@ -1052,6 +1052,15 @@ function renderElementUI($type, $idx, $content, $st) {
                     </div>
                     <small class="text-muted mt-1 d-block">URL halaman: website.com/<strong>slug-url</strong></small>
                 </div>
+
+                                <!-- Tambahkan ini di dalam id="settings-tab", setelah form-group Slug URL -->
+                <div class="form-group mt-4 p-3" style="background:#fff1f2; border:1px solid #fecdd3; border-radius:12px;">
+                    <div class="form-check form-switch d-flex align-items-center gap-3 mb-0" style="padding-left: 0;">
+                        <input class="form-check-input mt-0 ms-0" type="checkbox" id="isPureHtmlToggle" role="switch" style="width: 45px; height: 24px; cursor: pointer;" <?= !empty($page['is_pure_html']) ? 'checked' : '' ?>>
+                        <label class="form-check-label fw-bold text-danger mb-0" for="isPureHtmlToggle" style="cursor: pointer;">Mode Pure HTML</label>
+                    </div>
+                    <small class="text-muted d-block mt-2">Aktifkan untuk menempelkan script HTML mentah. Visual Builder akan dinonaktifkan.</small>
+                </div>
             </div>
         </div>
         
