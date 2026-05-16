@@ -29,6 +29,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_status'])) {
     exit;
 }
 
+// Handle Tambah Folder Baru
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_folder'])) {
+    $folder_name = trim($_POST['folder_name']);
+    if (!empty($folder_name)) {
+        $stmt = $pdo->prepare("INSERT INTO projects (user_id, name) VALUES (?, ?)");
+        $stmt->execute([$user['id'], $folder_name]);
+        header("Location: index.php?msg=folder_added");
+        exit;
+    }
+}
+
+// Handle Hapus Folder
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_folder_id'])) {
+    $folder_id = (int)$_POST['delete_folder_id'];
+    
+    // Hapus folder dari database
+    $stmt = $pdo->prepare("DELETE FROM projects WHERE id = ? AND user_id = ?");
+    $stmt->execute([$folder_id, $user['id']]);
+    
+    // Opsional: Kosongkan relasi landing page agar halamannya tidak ikut terhapus
+    $stmtUpdate = $pdo->prepare("UPDATE landing_pages SET project_id = 0 WHERE project_id = ? AND user_id = ?");
+    $stmtUpdate->execute([$folder_id, $user['id']]);
+    
+    header("Location: index.php?msg=folder_deleted");
+    exit;
+}
+
 // Ambil Daftar Folder untuk Filter
 $stmt_folders = $pdo->prepare("SELECT id, name FROM projects WHERE user_id = ? ORDER BY name ASC");
 $stmt_folders->execute([$user['id']]);
@@ -136,12 +163,29 @@ $published_pages = count(array_filter($pages, fn($p) => $p['status'] === 'publis
             <a href="index.php" class="whitespace-nowrap px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors <?= $active_folder === 0 ? 'bg-slate-800 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50' ?>">
                 Semua Halaman
             </a>
+            <!-- Tombol Tambah Folder -->
+            <button onclick="document.getElementById('modalAddFolder').classList.remove('hidden')" class="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold bg-green-50 text-green-600 hover:bg-green-100 border border-green-100 transition-colors">
+                <span class="material-symbols-outlined text-[16px]">create_new_folder</span>
+                Folder Baru
+            </button>         
             <?php foreach ($folders as $f): ?>
-                <a href="index.php?folder=<?= $f['id'] ?>" class="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors <?= $active_folder === $f['id'] ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50' ?>">
-                    <span class="material-symbols-outlined text-[16px] <?= $active_folder === $f['id'] ? 'text-blue-200' : 'text-slate-400' ?>">folder</span>
-                    <?= htmlspecialchars($f['name']) ?>
-                </a>
-            <?php endforeach; ?>
+    <div class="relative flex items-center">
+        <a href="index.php?folder=<?= $f['id'] ?>" class="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors <?= $active_folder === $f['id'] ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50' ?>">
+            <span class="material-symbols-outlined text-[16px] <?= $active_folder === $f['id'] ? 'text-blue-200' : 'text-slate-400' ?>">folder</span>
+            <?= htmlspecialchars($f['name']) ?>
+        </a>
+        
+        <!-- Tombol silang untuk hapus (hanya muncul saat folder diklik/aktif) -->
+        <?php if ($active_folder === $f['id']): ?>
+        <form method="POST" class="absolute -top-2 -right-2" onsubmit="return confirm('Hapus folder ini? (Landing page di dalamnya akan tetap aman)');">
+            <input type="hidden" name="delete_folder_id" value="<?= $f['id'] ?>">
+            <button type="submit" class="w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-sm transition-colors border-2 border-slate-50">
+                <span class="material-symbols-outlined text-[12px]">close</span>
+            </button>
+        </form>
+        <?php endif; ?>
+    </div>
+<?php endforeach; ?>
         </div>
 
         <?php if (empty($pages)): ?>
@@ -239,6 +283,29 @@ $published_pages = count(array_filter($pages, fn($p) => $p['status'] === 'publis
             </div>
         <?php endif; ?>
     </div>
+
+    <!-- Modal Tambah Folder -->
+<div id="modalAddFolder" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity">
+    <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-[18px] font-bold text-slate-900">Buat Folder Baru</h3>
+            <button onclick="document.getElementById('modalAddFolder').classList.add('hidden')" class="text-slate-400 hover:text-slate-600">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="add_folder" value="1">
+            <div class="mb-5">
+                <label class="block text-[13px] font-semibold text-slate-700 mb-1.5">Nama Folder</label>
+                <input type="text" name="folder_name" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-[14px] focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none transition-all" placeholder="Contoh: Edu Muslim Project">
+            </div>
+            <div class="flex gap-3 justify-end">
+                <button type="button" onclick="document.getElementById('modalAddFolder').classList.add('hidden')" class="px-4 py-2 text-[14px] font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Batal</button>
+                <button type="submit" class="px-4 py-2 text-[14px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-md shadow-blue-600/20">Simpan Folder</button>
+            </div>
+        </form>
+    </div>
+</div>
 
     <script>
         function toggleDropdown(id) {
