@@ -22,18 +22,71 @@ if (!$page_id) {
 try {
     $pdo->beginTransaction();
 
-    // 1. UPDATE DATA HALAMAN (Sistem Pixel Baru)
+    // 1. UPDATE DATA HALAMAN (Sistem Pixel Baru & Pure HTML)
     if (!empty($settings)) {
         $pixel_profile_id = !empty($settings['pixel_profile_id']) ? (int)$settings['pixel_profile_id'] : null;
+        
+        // Tangkap data Pure HTML dari payload settings
+        $is_pure_html = !empty($settings['is_pure_html']) ? 1 : 0;
+        $pure_html_content = $settings['pure_html_content'] ?? '';
 
         $stmtPage = $pdo->prepare("
             UPDATE landing_pages 
             SET title = ?, 
                 slug = ?, 
                 pixel_profile_id = ?, 
-                meta_event_name = ?
+                meta_event_name = ?,
+                is_pure_html = ?,
+                pure_html_content = ?
             WHERE id = ? AND user_id = ?
         ");
+        
+        $stmtPage->execute([
+            $settings['title'],
+            $settings['slug'],
+            $pixel_profile_id,
+            $settings['event_name'],
+            $is_pure_html,
+            $pure_html_content,
+            $page_id,
+            $user['id']
+        ]);
+    } else {
+        // Fallback jika tidak ada settings yang dikirim (menghindari error undefined di step 3)
+        $is_pure_html = 0; 
+    }
+
+    // 2. HAPUS ELEMEN LAMA
+    // Selalu hapus elemen lama, baik saat menyimpan visual builder baru maupun saat pindah ke pure html
+    $delete = $pdo->prepare("DELETE FROM page_elements WHERE page_id = ?");
+    $delete->execute([$page_id]);
+
+    // 3. INSERT ELEMEN BARU (Hanya dieksekusi jika BUKAN mode Pure HTML)
+    if (empty($is_pure_html) && !empty($elements)) {
+        $insert = $pdo->prepare("
+            INSERT INTO page_elements (page_id, type, content, order_position, styles) 
+            VALUES (?, ?, ?, ?, ?)
+        ");
+
+        foreach ($elements as $index => $el) {
+            $insert->execute([
+                $page_id,
+                $el['type'],
+                $el['content'],
+                $index, // Gunakan index loop 0,1,2...
+                json_encode($el['styles'])
+            ]);
+        }
+    }
+
+    $pdo->commit();
+    echo json_encode(['success' => true]);
+
+} catch (Exception $e) {
+    $pdo->rollBack();
+    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+}
+?>
         
         $stmtPage->execute([
             $settings['title'],
