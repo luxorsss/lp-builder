@@ -1008,23 +1008,40 @@ function renderElementUI($type, $idx, $content, $st) {
     </div>
 
     <div class="tab-content">
-        <div class="tab-pane active" id="content-tab">
-            <div class="content-area">
-                <div id="canvasElements">
-                    <?php if (empty($elements)): ?>
-                        <div class="empty-state">
-                            <div class="empty-state-icon">
-                                <i class="fas fa-layer-group"></i>
+      <div class="tab-pane active" id="content-tab">
+            
+            <!-- Area Visual Builder -->
+            <div id="visualBuilderSection" style="<?= !empty($page['is_pure_html']) ? 'display:none;' : '' ?>">
+                <div class="content-area">
+                    <div id="canvasElements">
+                        <?php if (empty($elements)): ?>
+                            <div class="empty-state">
+                                <div class="empty-state-icon">
+                                    <i class="fas fa-layer-group"></i>
+                                </div>
+                                <h4>Belum ada elemen</h4>
+                                <p>Klik tombol + di bawah untuk menambahkan elemen pertama Anda</p>
                             </div>
-                            <h4>Belum ada elemen</h4>
-                            <p>Klik tombol + di bawah untuk menambahkan elemen pertama Anda</p>
-                        </div>
-                    <?php else:
-                        foreach ($elements as $idx => $el) {
-                            $st = json_decode($el['styles'], true) ?: [];
-                            echo renderElementUI($el['type'], $idx, $el['content'], $st);
-                        }
-                    endif; ?>
+                        <?php else:
+                            foreach ($elements as $idx => $el) {
+                                $st = json_decode($el['styles'], true) ?: [];
+                                echo renderElementUI($el['type'], $idx, $el['content'], $st);
+                            }
+                        endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Area Pure HTML -->
+            <div id="pureHtmlSection" style="padding: 20px; <?= empty($page['is_pure_html']) ? 'display:none;' : '' ?>">
+                <div class="alert alert-danger" style="font-size:13px; border-radius: 10px;">
+                    <i class="fas fa-exclamation-triangle me-1"></i> <strong>Mode Pure HTML Aktif.</strong> Komponen drag & drop dinonaktifkan.
+                </div>
+                <div class="form-group">
+                    <div class="d-flex align-items-center justify-content-between bg-dark text-light px-3 py-2 rounded-top" style="border-bottom: 1px solid #333;">
+                        <span style="font-size: 12px; font-family: monospace;"><i class="fas fa-code text-danger"></i> index.html</span>
+                    </div>
+                    <textarea id="pureHtmlContent" class="form-control font-monospace rounded-0 rounded-bottom" style="background:#1e1e1e; color:#d4d4d4; font-size:13px; height: 60vh; border-color: #1e1e1e; resize: none;" spellcheck="false" placeholder="Paste kode HTML Anda di sini..."><?= htmlspecialchars($page['pure_html_content'] ?? '') ?></textarea>
                 </div>
             </div>
         </div>
@@ -1053,7 +1070,7 @@ function renderElementUI($type, $idx, $content, $st) {
                     <small class="text-muted mt-1 d-block">URL halaman: website.com/<strong>slug-url</strong></small>
                 </div>
 
-                                <!-- Tambahkan ini di dalam id="settings-tab", setelah form-group Slug URL -->
+                <!-- Tambahkan ini di dalam id="settings-tab", setelah form-group Slug URL -->
                 <div class="form-group mt-4 p-3" style="background:#fff1f2; border:1px solid #fecdd3; border-radius:12px;">
                     <div class="form-check form-switch d-flex align-items-center gap-3 mb-0" style="padding-left: 0;">
                         <input class="form-check-input mt-0 ms-0" type="checkbox" id="isPureHtmlToggle" role="switch" style="width: 45px; height: 24px; cursor: pointer;" <?= !empty($page['is_pure_html']) ? 'checked' : '' ?>>
@@ -1696,7 +1713,9 @@ async function savePage() {
             title: titleInput.value,
             slug: document.getElementById('pageSlugInput').value,
             pixel_profile_id: document.getElementById('pixelProfileInput').value,
-            event_name: document.getElementById('eventNameInput').value
+            event_name: document.getElementById('eventNameInput').value,
+            is_pure_html: document.getElementById('isPureHtmlToggle').checked ? 1 : 0,
+            pure_html_content: document.getElementById('pureHtmlContent').value
         };
         
         // Collect elements data
@@ -1766,6 +1785,31 @@ async function savePage() {
         isSaving = false;
     }
 }
+    
+// Logika Toggle Pure HTML
+document.getElementById('isPureHtmlToggle').addEventListener('change', function() {
+    const visualSection = document.getElementById('visualBuilderSection');
+    const pureHtmlSection = document.getElementById('pureHtmlSection');
+    const fabBtn = document.querySelector('.fab-container');
+
+    if (this.checked) {
+        visualSection.style.display = 'none';
+        pureHtmlSection.style.display = 'block';
+        if(fabBtn) fabBtn.style.display = 'none'; // Sembunyikan tombol + elemen
+    } else {
+        visualSection.style.display = 'block';
+        pureHtmlSection.style.display = 'none';
+        if(fabBtn) fabBtn.style.display = 'block'; // Tampilkan lagi tombol +
+    }
+});
+
+// Pengecekan saat halaman pertama kali dimuat (Hide tombol + jika statusnya Pure HTML)
+document.addEventListener('DOMContentLoaded', function() {
+    if(document.getElementById('isPureHtmlToggle').checked) {
+        const fabBtn = document.querySelector('.fab-container');
+        if(fabBtn) fabBtn.style.display = 'none';
+    }
+});
 
 // Show Notification
 function showNotification(message, type = 'success') {
