@@ -1,8 +1,9 @@
 <?php
 // cron/schedule_cron.php
 
-require_once '../includes/config.php';
-require_once '../includes/helpers.php';
+// Gunakan jalur absolut berbasis lokasi file ini
+require_once __DIR__ . '/../includes/config.php';
+require_once __DIR__ . '/../includes/functions.php'; // Pastikan file functions juga di-require jika fungsi ditaruh di sana
 
 // Cek apakah diakses dari command line
 if (php_sapi_name() !== 'cli') {
