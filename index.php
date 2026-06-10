@@ -19,11 +19,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
     exit;
 }
 
-// Handle Ubah Status
+// Handle Ubah Status Manual (Dashboard)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_status'])) {
     $page_id = (int)$_POST['page_id'];
     $new_status = $_POST['new_status'];
-    $stmt = $pdo->prepare("UPDATE landing_pages SET status = ? WHERE id = ? AND user_id = ?");
+    
+    // Update status utama sekaligus reset kolom jadwal agar tidak bentrok di kemudian hari
+    $stmt = $pdo->prepare("
+        UPDATE landing_pages 
+        SET status = ?, 
+            next_scheduled_status = NULL, 
+            next_schedule_time = NULL 
+        WHERE id = ? AND user_id = ?
+    ");
     $stmt->execute([$new_status, $page_id, $user['id']]);
     header("Location: index.php?msg=status_updated");
     exit;

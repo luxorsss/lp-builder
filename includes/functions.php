@@ -34,4 +34,32 @@ function getUserLandingPage($pdo, $page_id, $user_id) {
     $stmt->execute([$page_id, $user_id]);
     return $stmt->fetch(PDO::FETCH_ASSOC);
 }
+
+// Fungsi untuk memproses halaman terjadwal
+function updateScheduledStatus($pdo, $user_id) {
+    $current_time = date('Y-m-d H:i:s');
+    
+    // 1. Ambil halaman milik user yang jadwalnya sudah masuk/lewat waktu sekarang
+    $stmt = $pdo->prepare("
+        SELECT id, next_scheduled_status 
+        FROM landing_pages 
+        WHERE user_id = ? 
+          AND next_schedule_time IS NOT NULL 
+          AND next_schedule_time <= ?
+    ");
+    $stmt->execute([$user_id, $current_time]);
+    $scheduled_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // 2. Update status utama halaman tersebut dan kosongkan kolom jadwalnya
+    foreach ($scheduled_pages as $page) {
+        $updateStmt = $pdo->prepare("
+            UPDATE landing_pages 
+            SET status = ?, 
+                next_scheduled_status = NULL, 
+                next_schedule_time = NULL 
+            WHERE id = ?
+        ");
+        $updateStmt->execute([$page['next_scheduled_status'], $page['id']]);
+    }
+}
 ?>
