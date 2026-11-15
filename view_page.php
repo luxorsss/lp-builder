@@ -268,6 +268,8 @@ if (!empty($p['is_pure_html'])) {
         exit;
     }
 
+    header('Content-Type: text/html; charset=UTF-8');
+
     $raw_html = $p['pure_html_content'] ?? '';
     $tracking_scripts = "";
     
