@@ -103,6 +103,10 @@ foreach ($elements as $element) {
             $btn_size = $styles['btn_size'] ?? '';
             $btn_text = $content ?: 'Klik Disini';
             if ($is_published) {
+                if (!empty($_GET['lead_id'])) {
+                    $separator = strpos($link, '?') !== false ? '&' : '?';
+                    $link .= $separator . 'lead_id=' . urlencode($_GET['lead_id']);
+                }
                 if (!empty($_GET['fbclid'])) {
                     $separator = strpos($link, '?') !== false ? '&' : '?';
                     $link .= $separator . 'fbclid=' . urlencode($_GET['fbclid']);
@@ -127,17 +131,61 @@ foreach ($elements as $element) {
             
         case 'form':
             if ($is_published) {
-                echo "<div class='form-element' style='background-color:" . htmlspecialchars($bg_color) . "; color:" . htmlspecialchars($text_color) . ";'>";
-                echo "<form id='landingForm'>";
-                echo "<div class='mb-2'><label style='color:" . htmlspecialchars($text_color) . ";'>Nama Lengkap</label><input type='text' class='form-control' name='name' required style='color:#000;'></div>";
-                echo "<div class='mb-2'><label style='color:" . htmlspecialchars($text_color) . ";'>Email</label><input type='email' class='form-control' name='email' required style='color:#000;'></div>";
-                echo "<div class='mb-3'><label style='color:" . htmlspecialchars($text_color) . ";'>Pesan</label><textarea class='form-control' name='message' rows='3' style='color:#000;'></textarea></div>";
-                echo "<button type='submit' class='btn btn-primary w-100' style='background:" . htmlspecialchars($text_color) . ";color:" . htmlspecialchars($bg_color) . ";'>Kirim Pesan</button>";
+                $formData = json_decode($content ?? '', true);
+                if (is_array($formData)) {
+                    $form_pid = $formData['produk_id'] ?? ($styles['produk_id'] ?? '');
+                    $btn_label = !empty($formData['btn_text']) ? $formData['btn_text'] : 'DAPATKAN PANDUAN GRATIS';
+                    $form_action = !empty($formData['action_url']) ? $formData['action_url'] : ($styles['action_url'] ?? 'https://app.edumuslim.my.id/pixelcrm/co-free.php');
+                } else {
+                    $form_pid = !empty($styles['produk_id']) ? (int)$styles['produk_id'] : (is_numeric($content) ? (int)$content : '');
+                    $btn_label = !empty($styles['btn_text']) ? $styles['btn_text'] : (!empty($content) && !is_numeric($content) ? $content : 'DAPATKAN PANDUAN GRATIS');
+                    $form_action = !empty($styles['action_url']) ? $styles['action_url'] : 'https://app.edumuslim.my.id/pixelcrm/co-free.php';
+                }
+                
+                $cur_fbclid = htmlspecialchars($_GET['fbclid'] ?? '');
+                $btn_bg = !empty($styles['btn_bg']) ? $styles['btn_bg'] : '#10B981';
+                $btn_color = !empty($styles['btn_color']) ? $styles['btn_color'] : '#ffffff';
+
+                echo "<div class='lead-form-element' style='max-width: 480px; margin: 25px auto; padding: 24px; background: " . htmlspecialchars($bg_color) . "; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); border: 1px solid rgba(0,0,0,0.08); font-family: inherit;'>";
+                echo "<form action='" . htmlspecialchars($form_action) . "' method='POST' class='lead-magnet-form'>";
+                
+                if (!empty($form_pid)) {
+                    echo "<input type='hidden' name='id' value='" . (int)$form_pid . "'>";
+                }
+                echo "<input type='hidden' name='fbclid' class='fbc-input' value='{$cur_fbclid}'>";
+                
+                // Honeypot anti-bot
+                echo "<div style='position:absolute;left:-9999px;top:-9999px;opacity:0;pointer-events:none;' aria-hidden='true'>
+                        <input type='text' name='website_url' tabindex='-1' autocomplete='off'>
+                      </div>";
+                
+                // Input Nama
+                echo "<div style='margin-bottom: 16px; text-align: left;'>";
+                echo "<label style='display:block; font-weight:700; font-size:14px; margin-bottom:6px; color:" . htmlspecialchars($text_color) . ";'>Nama Lengkap</label>";
+                echo "<input type='text' name='nama' required minlength='3' maxlength='70' placeholder='Masukkan nama Anda' style='width:100%; padding:14px 16px; border-radius:10px; border:1px solid #d1d5db; font-size:15px; color:#111; box-sizing:border-box; outline:none;'>";
+                echo "</div>";
+                
+                // Input WhatsApp
+                echo "<div style='margin-bottom: 18px; text-align: left;'>";
+                echo "<label style='display:block; font-weight:700; font-size:14px; margin-bottom:6px; color:" . htmlspecialchars($text_color) . ";'>Nomor WhatsApp</label>";
+                echo "<input type='tel' name='nomor_wa' class='input-nowa' required inputmode='numeric' pattern='[0-9]{10,15}' minlength='10' maxlength='15' placeholder='081234567890' style='width:100%; padding:14px 16px; border-radius:10px; border:1px solid #d1d5db; font-size:15px; color:#111; box-sizing:border-box; outline:none;'>";
+                echo "<small style='display:block; margin-top:5px; font-size:12px; color:#6b7280;'>Link materi gratis akan dikirim otomatis ke WhatsApp ini.</small>";
+                echo "</div>";
+                
+                // Tombol Submit
+                echo "<button type='submit' class='btn-submit-lead' style='width:100%; background:{$btn_bg}; color:{$btn_color}; padding:16px 20px; font-size:16px; font-weight:800; border-radius:12px; border:none; cursor:pointer; box-shadow:0 6px 18px rgba(16,185,129,0.25); transition:transform 0.2s;'>";
+                echo htmlspecialchars($btn_label) . " →";
+                echo "</button>";
+                
+                echo "<div style='text-align:center; margin-top:12px; font-size:12px; color:#9ca3af;'>
+                        🔒 Privasi 100% aman & bebas spam
+                      </div>";
+                
                 echo "</form></div>";
             } else {
                 echo "<div class='coming-soon-notice'>
                     <p style='color:#e74c3c; font-size:1.5rem; font-weight:700; text-align:center; margin:20px 0;'>
-                        ⛔ Maaf, penjualan belum dibuka.
+                        ⛔ Maaf, pendaftaran belum dibuka.
                     </p>
                 </div>";
             }
@@ -577,5 +625,44 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 </script>
 <?php endif; ?>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const leadId = urlParams.get('lead_id');
+    const fbclid = urlParams.get('fbclid');
+    
+    // 1. Estafet parameter ke semua tombol custom-button (SLO -> co.php)
+    if (leadId || fbclid) {
+        document.querySelectorAll('a.custom-button').forEach(function(btn) {
+            let href = btn.getAttribute('href');
+            if (href && href.startsWith('http')) {
+                try {
+                    let url = new URL(href, window.location.origin);
+                    if (leadId && !url.searchParams.has('lead_id')) url.searchParams.set('lead_id', leadId);
+                    if (fbclid && !url.searchParams.has('fbclid')) url.searchParams.set('fbclid', fbclid);
+                    btn.setAttribute('href', url.toString());
+                } catch(e) {}
+            }
+        });
+    }
+
+    // 2. Isi hidden input fbclid di semua form lead magnet jika kosong
+    if (fbclid) {
+        document.querySelectorAll('.fbc-input').forEach(function(inp) {
+            if (!inp.value) inp.value = fbclid;
+        });
+    }
+
+    // 3. Normalisasi input nomor WhatsApp
+    document.querySelectorAll('.input-nowa').forEach(function(inp) {
+        inp.addEventListener('blur', function() {
+            let phone = this.value.trim().replace(/[^0-9]/g, '');
+            if (phone.length >= 5 && phone.startsWith('0')) {
+                this.value = '62' + phone.substring(1);
+            }
+        });
+    });
+});
+</script>
 </body>
 </html>

@@ -296,6 +296,10 @@ function renderElementUI($type, $idx, $content, $st)
                         <span class="material-symbols-outlined text-secondary group-hover:text-primary transition-colors">smart_button</span>
                         <span class="text-[12px] text-center font-medium">Button</span>
                     </div>
+                    <div class="element-card bg-surface-container-low border border-outline-variant rounded-lg p-3 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary hover:text-primary transition-all group" data-type="form">
+                        <span class="material-symbols-outlined text-secondary group-hover:text-primary transition-colors">assignment</span>
+                        <span class="text-[12px] text-center font-medium">Form Lead</span>
+                    </div>
                     <div class="element-card bg-surface-container-low border border-outline-variant rounded-lg p-3 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary hover:text-primary transition-all group" data-type="faq">
                         <span class="material-symbols-outlined text-secondary group-hover:text-primary transition-colors">quiz</span>
                         <span class="text-[12px] text-center font-medium">FAQ</span>
@@ -631,6 +635,23 @@ function renderElementContent(type, content, styles) {
         case 'button':
             html = `<div class="text-center py-4"><a href="${link}" class="inline-block shadow-sm transition-transform hover:-translate-y-0.5" style="background:${bg}; color:${tx}; padding: 12px 32px; border-radius: 9999px; font-weight: 700; text-decoration:none;">${content || 'Klik Disini'}</a></div>`;
             break;
+        case 'form':
+            let fData = {};
+            try { fData = content ? JSON.parse(content) : {}; } catch(e) { fData = {}; }
+            let bText = fData.btn_text || 'DAPATKAN PANDUAN GRATIS';
+            html = `<div class="p-6 bg-white border border-outline-variant rounded-2xl shadow-sm max-w-md mx-auto text-center space-y-3">
+                        <div class="flex items-center justify-center gap-2 text-emerald-600 font-bold text-sm">
+                            <span class="material-symbols-outlined text-[20px]">assignment</span>
+                            <span>Form Pendaftaran Lead Magnet</span>
+                        </div>
+                        <div class="space-y-2 text-left">
+                            <div class="bg-gray-100 rounded-lg p-2.5 text-xs text-gray-500 font-medium">Nama Lengkap (Wajib)</div>
+                            <div class="bg-gray-100 rounded-lg p-2.5 text-xs text-gray-500 font-medium">Nomor WhatsApp (Wajib)</div>
+                        </div>
+                        <button type="button" class="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl text-sm shadow-sm">${bText} →</button>
+                        <span class="text-[11px] text-gray-400 block">🔒 Privasi 100% aman</span>
+                    </div>`;
+            break;
         case 'faq':
             html = `<div class="faq-preview w-full max-w-3xl mx-auto space-y-3"><div class="bg-surface-container-low border border-outline-variant border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-outline"><span class="material-symbols-outlined text-[32px] mb-2">quiz</span><p class="text-body-sm font-medium text-on-surface-variant">Tambahkan FAQ di Panel Kanan</p></div></div>`;
             break;
@@ -750,6 +771,24 @@ function renderSettings(type, idx) {
                     </div>
                 </div>`;
     }
+    else if(type === 'form') {
+        let fData = {};
+        try { fData = content ? JSON.parse(content) : {}; } catch(e) { fData = {}; }
+        html += `<div>
+                    <label class="block text-[13px] font-medium text-on-surface mb-1">ID Produk PixelCRM (Produk Rp 0)</label>
+                    <input type="number" id="sFormPid" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none" placeholder="Contoh: 30" value="${fData.produk_id || ''}">
+                    <span class="text-[11px] text-on-surface-variant block mt-1">Masukkan ID produk gratis dari PixelCRM Anda.</span>
+                </div>
+                <div>
+                    <label class="block text-[13px] font-medium text-on-surface mb-1">Teks Tombol Submit</label>
+                    <input type="text" id="sFormBtnText" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none" placeholder="DAPATKAN PANDUAN GRATIS" value="${fData.btn_text || 'DAPATKAN PANDUAN GRATIS'}">
+                </div>
+                <div>
+                    <label class="block text-[13px] font-medium text-on-surface mb-1">Action URL Endpoint (Opsional)</label>
+                    <input type="url" id="sFormAction" class="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-[14px] focus:border-primary outline-none" placeholder="https://app.edumuslim.my.id/pixelcrm/co-free.php" value="${fData.action_url || ''}">
+                    <span class="text-[11px] text-on-surface-variant block mt-1">Kosongkan jika menggunakan endpoint default PixelCRM.</span>
+                </div>`;
+    }
     else if(type === 'faq') {
         let faqs = [];
         try { faqs = content ? JSON.parse(content) : []; } catch(e) { faqs = []; }
@@ -838,6 +877,17 @@ function setupEventListeners(type) {
                 selectedElement.find('.in-link').val(v);
                 selectedElement.find('a').attr('href', v);
             });
+            break;
+        case 'form':
+            function updateFormConfig() {
+                let pid = $('#sFormPid').val() || '';
+                let btn = $('#sFormBtnText').val() || 'DAPATKAN PANDUAN GRATIS';
+                let act = $('#sFormAction').val() || '';
+                let d = { produk_id: pid, btn_text: btn, action_url: act };
+                selectedElement.find('.in-content').val(JSON.stringify(d));
+                selectedElement.find('button').text(btn + ' →');
+            }
+            $('#sFormPid, #sFormBtnText, #sFormAction').on('input', updateFormConfig);
             break;
         case 'image':
             $('#sImageUrl').on('input', function() {
