@@ -103,13 +103,12 @@ foreach ($elements as $element) {
             $btn_size = $styles['btn_size'] ?? '';
             $btn_text = $content ?: 'Klik Disini';
             if ($is_published) {
-                if (!empty($_GET['lead_id'])) {
-                    $separator = strpos($link, '?') !== false ? '&' : '?';
-                    $link .= $separator . 'lead_id=' . urlencode($_GET['lead_id']);
-                }
-                if (!empty($_GET['fbclid'])) {
-                    $separator = strpos($link, '?') !== false ? '&' : '?';
-                    $link .= $separator . 'fbclid=' . urlencode($_GET['fbclid']);
+                $params_to_forward = ['lead_id', 'fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+                foreach ($params_to_forward as $p_key) {
+                    if (!empty($_GET[$p_key]) && strpos($link, $p_key . '=') === false) {
+                        $separator = strpos($link, '?') !== false ? '&' : '?';
+                        $link .= $separator . $p_key . '=' . urlencode($_GET[$p_key]);
+                    }
                 }
                 $target = strpos($link, 'http') === 0 ? 'rel="noopener"' : '';
                 echo "<div class='button-element'>
@@ -628,25 +627,41 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     const urlParams = new URLSearchParams(window.location.search);
-    const leadId = urlParams.get('lead_id');
-    const fbclid = urlParams.get('fbclid');
-    
-    // 1. Estafet parameter ke semua tombol custom-button (SLO -> co.php)
-    if (leadId || fbclid) {
-        document.querySelectorAll('a.custom-button').forEach(function(btn) {
-            let href = btn.getAttribute('href');
-            if (href && href.startsWith('http')) {
-                try {
-                    let url = new URL(href, window.location.origin);
-                    if (leadId && !url.searchParams.has('lead_id')) url.searchParams.set('lead_id', leadId);
-                    if (fbclid && !url.searchParams.has('fbclid')) url.searchParams.set('fbclid', fbclid);
-                    btn.setAttribute('href', url.toString());
-                } catch(e) {}
+    const CTA_SELECTOR = 'a[href*="co.php"], a[href*="co-free.php"], a.custom-button, a.btn-cta, a[href*="pixelcrm"]';
+
+    function appendParams(el) {
+        let href = el.getAttribute('href');
+        if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+        try {
+            let url = new URL(href, window.location.origin);
+            let modified = false;
+            urlParams.forEach(function(val, key) {
+                if (!url.searchParams.has(key)) {
+                    url.searchParams.set(key, val);
+                    modified = true;
+                }
+            });
+            if (modified) {
+                el.setAttribute('href', url.toString());
             }
-        });
+        } catch(e) {}
+    }
+
+    // 1. Estafet parameter ke semua tombol CTA / Checkout (SLO -> co.php)
+    if (urlParams.toString()) {
+        document.querySelectorAll(CTA_SELECTOR).forEach(appendParams);
+        
+        // Listener tangkap klik untuk tombol dinamis / custom HTML
+        document.addEventListener('click', function(e) {
+            let targetBtn = e.target.closest(CTA_SELECTOR);
+            if (targetBtn) {
+                appendParams(targetBtn);
+            }
+        }, true);
     }
 
     // 2. Isi hidden input fbclid di semua form lead magnet jika kosong
+    const fbclid = urlParams.get('fbclid');
     if (fbclid) {
         document.querySelectorAll('.fbc-input').forEach(function(inp) {
             if (!inp.value) inp.value = fbclid;
