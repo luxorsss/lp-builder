@@ -386,10 +386,69 @@ if (!empty($p['is_pure_html'])) {
     }
     // ------------------------------------------------
 
+    // --- FUNNEL SCRIPT (Estafet lead_id/fbclid ke CTA & Normalisasi WA) ---
+    $funnel_script = "
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const CTA_SELECTOR = 'a[href*=\"co.php\"], a[href*=\"co-free.php\"], a.custom-button, a.btn-cta, a[href*=\"pixelcrm\"]';
+
+        function appendParams(el) {
+            let href = el.getAttribute('href');
+            if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+            try {
+                let url = new URL(href, window.location.origin);
+                let modified = false;
+                urlParams.forEach(function(val, key) {
+                    if (!url.searchParams.has(key)) {
+                        url.searchParams.set(key, val);
+                        modified = true;
+                    }
+                });
+                if (modified) {
+                    el.setAttribute('href', url.toString());
+                }
+            } catch(e) {}
+        }
+
+        if (urlParams.toString()) {
+            document.querySelectorAll(CTA_SELECTOR).forEach(appendParams);
+            document.addEventListener('click', function(e) {
+                let targetBtn = e.target.closest(CTA_SELECTOR);
+                if (targetBtn) {
+                    appendParams(targetBtn);
+                }
+            }, true);
+        }
+
+        const fbclid = urlParams.get('fbclid');
+        if (fbclid) {
+            document.querySelectorAll('.fbc-input, input[name=\"fbclid\"]').forEach(function(inp) {
+                if (!inp.value) inp.value = fbclid;
+            });
+        }
+
+        document.querySelectorAll('.input-nowa, input[name=\"nomor_wa\"]').forEach(function(inp) {
+            inp.addEventListener('blur', function() {
+                let phone = this.value.trim().replace(/[^0-9]/g, '');
+                if (phone.length >= 5 && phone.startsWith('0')) {
+                    this.value = '62' + phone.substring(1);
+                }
+            });
+        });
+    });
+    </script>";
+
     if (stripos($raw_html, '</head>') !== false) {
         $raw_html = str_ireplace('</head>', $tracking_scripts . "\n</head>", $raw_html);
     } else {
         $raw_html = $tracking_scripts . "\n" . $raw_html;
+    }
+
+    if (stripos($raw_html, '</body>') !== false) {
+        $raw_html = str_ireplace('</body>', $funnel_script . "\n</body>", $raw_html);
+    } else {
+        $raw_html .= "\n" . $funnel_script;
     }
 
     echo $raw_html;
@@ -663,13 +722,13 @@ document.addEventListener("DOMContentLoaded", function() {
     // 2. Isi hidden input fbclid di semua form lead magnet jika kosong
     const fbclid = urlParams.get('fbclid');
     if (fbclid) {
-        document.querySelectorAll('.fbc-input').forEach(function(inp) {
+        document.querySelectorAll('.fbc-input, input[name="fbclid"]').forEach(function(inp) {
             if (!inp.value) inp.value = fbclid;
         });
     }
 
     // 3. Normalisasi input nomor WhatsApp
-    document.querySelectorAll('.input-nowa').forEach(function(inp) {
+    document.querySelectorAll('.input-nowa, input[name="nomor_wa"]').forEach(function(inp) {
         inp.addEventListener('blur', function() {
             let phone = this.value.trim().replace(/[^0-9]/g, '');
             if (phone.length >= 5 && phone.startsWith('0')) {
